@@ -1,6 +1,6 @@
 # イグニ DPC（Device Policy Controller）
 
-完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、専用ホームに **設定**・**Play ストア**・**カメラ**・**Chrome** を並べ、それ以外は隠します。それ以外の起動可能なアプリは、安全に隠せるものだけ `DevicePolicyManager.setApplicationHidden` で非表示にします（アンインストールはしません）。
+完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**標準（OEM）のホーム画面**を使い、**設定**・**Play ストア**・**カメラ**・**Chrome** 以外の起動可能アプリは、安全に隠せるものだけ `DevicePolicyManager.setApplicationHidden` で非表示にします（アンインストールはしません。システムランチャーは置き換えません）。
 
 - パッケージ名: `app.igni.dpc`
 - アプリ名: `イグニ`
@@ -11,13 +11,14 @@
 
 プロビジョニング完了時（`GET_PROVISIONING_MODE` → 完全管理端末、続けて `ADMIN_POLICY_COMPLIANCE`）、Device Owner 有効化時、起動完了時に、同じポリシーを冪等に適用します。ユーザー操作は不要です。
 
-**許可リスト（専用ホームのタイル）**
+**許可リスト（ホームに残す）**
 
 - `com.android.settings`（設定）および OEM Settings パッケージ
 - `com.android.vending`（Play ストア）
 - カメラ（`com.android.camera2` / `com.android.camera` / `com.google.android.GoogleCamera` および一般的な OEM カメラ）
 - `com.android.chrome`（Chrome；安定版が無い場合のみ beta）
-- この DPC 自身（管理画面・再適用用）
+- この DPC 自身（`AdminActivity` — 「ポリシーを再適用」用の通常ランチャーアプリアイコン）
+- 標準の HOME ランチャー、SystemUI、IME など端末動作に必要なパッケージ
 
 **隠さない安全リスト（例）**
 
@@ -25,20 +26,26 @@ SystemUI、PackageInstaller、PermissionController、Google Play 開発者サー
 
 Lock Task（キオスク）は **デフォルトオフ** です。有効にする場合は `app/build.gradle.kts` の `ENABLE_LOCK_TASK` を `true` にしてください。
 
-## 専用ホーム（v1.0.1+）
+## ホーム画面（v1.0.3+）
 
-OEM ランチャーに Settings が出ない端末向けに、`HomeActivity` を **デフォルト HOME** にします（`DevicePolicyManager.addPersistentPreferredActivity`）。
+**標準（OEM）ランチャーをそのまま使います。** Igni の 2×2 タイル `HomeActivity` は HOME としては使いません。
 
-- 1 画面・ページなしの 2×2 グリッド: **設定** / **Playストア** / **カメラ** / **Chrome**
-- コンポーネント: `app.igni.dpc/.HomeActivity`
-- 管理画面はホーム右下の小さな「管理」から開く（`AdminActivity` の LAUNCHER フィルタは外してある）
+- `PolicyApplier` は `addPersistentPreferredActivity` を呼ばず、適用時に `clearPackagePersistentPreferredActivities(admin, packageName)` で過去の HOME 乗っ取りを解除します
+- `HomeActivity` はマニフェストで無効化（HOME/DEFAULT フィルタなし）
+- `AdminActivity` は通常の `LAUNCHER` アイコン（「ポリシーを再適用」専用）。HOME には強制しません
+- 非許可リストのアプリは隠し、ストックランチャーに Settings / Play / Camera / Chrome（と OEM が置くもの）が残るようにします
+- ショートカットのサイレント pin は DO でもユーザー確認が必要なことが多く、信頼できないため行いません（hide + 標準ホームに依存）
 
-## 表示ポリシー（v1.0.2+）
+## 表示ポリシー（v1.0.2+ / 強化 v1.0.3）
 
 `PolicyApplier.apply()`（プロビジョニング完了・起動・再適用時）で次も冪等に適用します。個別パスの失敗はログのみで、適用全体は止めません。
 
 - **ダークモード ON**: `UiModeManager.setNightMode(MODE_NIGHT_YES)` / API 30+ は `setNightModeActivated(true)`、必要なら `Settings.Secure.UI_NIGHT_MODE` も設定
-- **画面オフ 30 分**: `Settings.System.SCREEN_OFF_TIMEOUT = 1_800_000`（ms）。補完として `DevicePolicyManager.setMaximumTimeToLock` も 30 分に設定
+- **画面オフ 30 分**:
+  - `Settings.System.putInt(..., SCREEN_OFF_TIMEOUT, 1_800_000)` のあと **読み戻してログ**
+  - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, SCREEN_OFF_TIMEOUT, "1800000")`（DO SystemApi）も試す
+  - `setMaximumTimeToLock(30 min)` は補完として残す。一部 OEM ではキーガード／画面オフと干渉しうるため、**SCREEN_OFF_TIMEOUT が残ることを優先**
+  - 管理画面（`AdminActivity`）に現在の `SCREEN_OFF_TIMEOUT`（ms）を表示し、再適用後に確認できる
 
 ## リリース APK のビルド
 
@@ -157,11 +164,12 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 
 ## 管理画面
 
-専用ホーム右下の「管理」から開くと:
+ランチャーの「イグニ」アイコン（`AdminActivity`）から開くと:
 
 - Device Owner の有効 / 無効
-- **ポリシーを再適用** — 起動可能アプリを再スキャンして隠す
+- **ポリシーを再適用** — 起動可能アプリを再スキャンして隠す（HOME 乗っ取り解除・タイムアウト再設定含む）
 - **アプリ一覧を表示に戻す** — この DPC が隠したパッケージを再表示（リストは端末内に保存）
+- 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - 許可リストの表示
 
 ## プロジェクト構成

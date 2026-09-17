@@ -7,6 +7,10 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Helps Settings.System.putInt(SCREEN_OFF_TIMEOUT); DO may also write without it. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature
         android:name="android.software.device_admin"
@@ -34,25 +38,24 @@
         android:theme="@style/Theme.Igni"
         tools:targetApi="35">
 
-        <!-- Dedicated home: Settings / Play Store / Camera / Chrome tiles. -->
+        <!-- Legacy tile UI kept in tree but disabled — stock OEM launcher is HOME. -->
         <activity
             android:name=".HomeActivity"
-            android:exported="true"
-            android:launchMode="singleTask"
+            android:enabled="false"
+            android:exported="false"
             android:excludeFromRecents="true"
-            android:stateNotNeeded="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+            android:stateNotNeeded="true" />
 
-        <!-- Admin tools: no LAUNCHER icon; open from Home 「管理」 link. -->
+        <!-- Admin / re-apply only — normal LAUNCHER app, never forced as HOME. -->
         <activity
             android:name=".AdminActivity"
             android:exported="true"
-            android:launchMode="singleTop" />
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <!-- Android 10+ QR / zero-touch: choose fully managed device. -->
         <activity

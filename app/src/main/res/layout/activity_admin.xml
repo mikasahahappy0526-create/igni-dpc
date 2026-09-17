@@ -108,6 +108,16 @@
             tools:text="これまでに非表示にしたアプリ: 0 件" />
 
         <TextView
+            android:id="@+id/screenTimeout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/igni_muted"
+            android:textSize="14sp"
+            tools:text="画面オフタイムアウト: 1800000 ms" />
+
+        <TextView
             android:id="@+id/lockTaskNote"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

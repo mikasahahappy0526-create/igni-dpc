@@ -60,9 +60,18 @@ class AdminActivity : AppCompatActivity() {
             getString(R.string.hint_not_owner)
         }
         binding.hiddenCount.text = getString(R.string.hidden_count, applier.hiddenCount())
+        updateTimeoutLabel(applier.currentScreenTimeoutMs())
         binding.lockTaskNote.isVisible = BuildConfig.ENABLE_LOCK_TASK
         binding.btnReapply.isEnabled = isOwner
         binding.btnUnhide.isEnabled = isOwner
+    }
+
+    private fun updateTimeoutLabel(timeoutMs: Int?) {
+        binding.screenTimeout.text = if (timeoutMs != null) {
+            getString(R.string.screen_timeout_value, timeoutMs)
+        } else {
+            getString(R.string.screen_timeout_unknown)
+        }
     }
 
     private fun reapply() {
@@ -72,6 +81,9 @@ class AdminActivity : AppCompatActivity() {
             runOnUiThread {
                 setBusy(false)
                 refresh()
+                if (result.screenTimeoutMs != null) {
+                    updateTimeoutLabel(result.screenTimeoutMs)
+                }
                 val message = if (result.success) {
                     getString(R.string.toast_reapplied, result.hiddenCount, result.newlyHidden)
                 } else {

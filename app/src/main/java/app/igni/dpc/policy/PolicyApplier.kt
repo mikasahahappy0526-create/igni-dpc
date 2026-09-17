@@ -3,27 +3,29 @@ package app.igni.dpc.policy
 import android.app.UiModeManager
 import android.app.admin.DevicePolicyManager
 import android.content.Context
-import android.content.ComponentName
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
-import app.igni.dpc.HomeActivity
 
 data class ApplyResult(
     val success: Boolean,
     val hiddenCount: Int,
     val newlyHidden: Int = 0,
-    val message: String? = null
+    val message: String? = null,
+    val screenTimeoutMs: Int? = null
 )
 
 /**
  * Idempotent Device Owner policy: hide launchable apps except the product allowlist
  * and a safety keep-list. Hide is preferred over uninstall.
+ *
+ * Does **not** replace the system launcher — Home stays with the OEM/stock launcher.
+ * Non-allowlist apps are hidden so the stock launcher only surfaces Settings / Play /
+ * Camera / Chrome (plus whatever the OEM still places).
  *
  * Also applies display defaults: system dark mode ON and screen-off timeout 30 minutes.
  *
@@ -44,6 +46,16 @@ class PolicyApplier(context: Context) {
     fun hasApplied(): Boolean = store.hasApplied()
 
     fun allowlistForDisplay(): List<String> = keep.describeKeepReasons()
+
+    /** Current Settings.System.SCREEN_OFF_TIMEOUT, or null if unreadable. */
+    fun currentScreenTimeoutMs(): Int? {
+        return runCatching {
+            Settings.System.getInt(
+                appContext.contentResolver,
+                Settings.System.SCREEN_OFF_TIMEOUT
+            )
+        }.getOrNull()
+    }
 
     fun apply(): ApplyResult {
         if (!isDeviceOwner()) {
@@ -78,7 +90,7 @@ class PolicyApplier(context: Context) {
             }
         }
 
-        // Optional kiosk allowlist. Default false — hide-only matches “ホームに設定とPlayだけ”.
+        // Optional kiosk allowlist. Default false — hide-only matches stock-launcher UX.
         if (BuildConfig.ENABLE_LOCK_TASK) {
             runCatching {
                 dpm.setLockTaskPackages(
@@ -96,19 +108,25 @@ class PolicyApplier(context: Context) {
             }.onFailure { Log.w(TAG, "setLockTaskPackages failed", it) }
         }
 
-
-        // Make HomeActivity the default HOME so Settings/Play/Camera/Chrome tiles show
-        // without relying on the OEM launcher layout (which often omits Settings).
-        setDedicatedHomePreferred()
+        // Clear any previous HOME takeover from older DPC versions; do not set a new one.
+        clearHomeTakeover()
 
         // Display policies: dark mode + 30 min screen timeout (best-effort; never fail apply).
         applyDarkMode()
-        applyScreenTimeout()
+        val timeoutMs = applyScreenTimeout()
+
+        // Shortcut pinning (ShortcutManager.requestPinShortcut) always prompts the user on
+        // stock launchers — no reliable DO-silent pin API. Rely on hide + OEM home icons.
 
         store.replace(hidden)
         store.markApplied()
-        Log.i(TAG, "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden")
-        return ApplyResult(success = true, hiddenCount = hidden.size, newlyHidden = newlyHidden)
+        Log.i(TAG, "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden timeoutMs=$timeoutMs")
+        return ApplyResult(
+            success = true,
+            hiddenCount = hidden.size,
+            newlyHidden = newlyHidden,
+            screenTimeoutMs = timeoutMs
+        )
     }
 
     fun unhideAll(): Int {
@@ -167,52 +185,60 @@ class PolicyApplier(context: Context) {
         }.onFailure { Log.w(TAG, "Settings.Secure.$SECURE_UI_NIGHT_MODE failed", it) }
     }
 
-    /** Screen-off timeout 30 minutes. Also set DPM max time-to-lock as a complementary ceiling. */
-    private fun applyScreenTimeout() {
+    /**
+     * Screen-off timeout 30 minutes.
+     *
+     * Prefer [Settings.System.SCREEN_OFF_TIMEOUT] sticking (put + read-back). Also try
+     * reflective [DevicePolicyManager.setSystemSetting] (DO SystemApi) when present.
+     *
+     * [DevicePolicyManager.setMaximumTimeToLock] is kept as a complementary ceiling, but
+     * on some OEMs it can interact oddly with interactive screen-off (keyguard vs blanking).
+     * Prefer ensuring SCREEN_OFF_TIMEOUT sticks; max-time-to-lock is best-effort only.
+     *
+     * @return actual SCREEN_OFF_TIMEOUT after writes, or null if unreadable.
+     */
+    private fun applyScreenTimeout(): Int? {
         runCatching {
             val ok = Settings.System.putInt(
                 appContext.contentResolver,
                 Settings.System.SCREEN_OFF_TIMEOUT,
                 SCREEN_OFF_TIMEOUT_MS
             )
-            Log.i(TAG, "SCREEN_OFF_TIMEOUT=${SCREEN_OFF_TIMEOUT_MS}ms put=$ok")
-        }.onFailure { Log.w(TAG, "SCREEN_OFF_TIMEOUT failed", it) }
+            Log.i(TAG, "SCREEN_OFF_TIMEOUT put=$ok target=${SCREEN_OFF_TIMEOUT_MS}ms")
+        }.onFailure { Log.w(TAG, "SCREEN_OFF_TIMEOUT putInt failed", it) }
+
+        // DO SystemApi: DevicePolicyManager.setSystemSetting(admin, name, value)
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSystemSetting",
+                android.content.ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, Settings.System.SCREEN_OFF_TIMEOUT, SCREEN_OFF_TIMEOUT_MS.toString())
+            Log.i(TAG, "DPM.setSystemSetting(SCREEN_OFF_TIMEOUT, $SCREEN_OFF_TIMEOUT_MS)")
+        }.onFailure { Log.w(TAG, "DPM.setSystemSetting(SCREEN_OFF_TIMEOUT) unavailable/failed", it) }
 
         runCatching {
             dpm.setMaximumTimeToLock(admin, SCREEN_OFF_TIMEOUT_MS.toLong())
-            Log.i(TAG, "setMaximumTimeToLock(${SCREEN_OFF_TIMEOUT_MS}ms)")
+            Log.i(TAG, "setMaximumTimeToLock(${SCREEN_OFF_TIMEOUT_MS}ms) — complementary; prefer SCREEN_OFF_TIMEOUT")
         }.onFailure { Log.w(TAG, "setMaximumTimeToLock failed", it) }
+
+        val actual = currentScreenTimeoutMs()
+        Log.i(TAG, "SCREEN_OFF_TIMEOUT read-back=${actual}ms (want ${SCREEN_OFF_TIMEOUT_MS})")
+        return actual
     }
 
-    private fun setDedicatedHomePreferred() {
-        val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            addCategory(Intent.CATEGORY_DEFAULT)
-        }
-        val homeComponent = ComponentName(appContext, HomeActivity::class.java)
-
-        // Best-effort: clear prior preferred HOME activities for known OEM launchers.
-        val launcherPkgs = listOf(
-            "com.android.launcher",
-            "com.android.launcher3",
-            "com.google.android.apps.nexuslauncher",
-            "com.sec.android.app.launcher",
-            "com.huawei.android.launcher",
-            "com.miui.home",
-            "com.oppo.launcher",
-            "com.android.systemui", // some devices bind HOME oddly
-            appContext.packageName,
-        )
-        for (pkg in launcherPkgs) {
-            runCatching { dpm.clearPackagePersistentPreferredActivities(admin, pkg) }
-                .onFailure { Log.w(TAG, "clearPackagePersistentPreferredActivities($pkg) failed", it) }
-        }
-
+    /**
+     * Undo HOME takeover from older releases that called addPersistentPreferredActivity
+     * for HomeActivity. Leaves the stock/OEM launcher as the default HOME handler.
+     */
+    private fun clearHomeTakeover() {
         runCatching {
-            dpm.addPersistentPreferredActivity(admin, homeFilter, homeComponent)
-            Log.i(TAG, "Preferred HOME set to $homeComponent")
+            dpm.clearPackagePersistentPreferredActivities(admin, appContext.packageName)
+            Log.i(TAG, "Cleared persistent preferred activities for ${appContext.packageName}")
         }.onFailure {
-            Log.w(TAG, "addPersistentPreferredActivity failed", it)
+            Log.w(TAG, "clearPackagePersistentPreferredActivities failed", it)
         }
     }
 
@@ -222,7 +248,7 @@ class PolicyApplier(context: Context) {
         /** @hide Settings.Secure.UI_NIGHT_MODE */
         private const val SECURE_UI_NIGHT_MODE = "ui_night_mode"
         /** 30 minutes in milliseconds. */
-        private const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
+        const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
         private const val MATCH_FLAGS =
             PackageManager.MATCH_DISABLED_COMPONENTS or
                 PackageManager.MATCH_UNINSTALLED_PACKAGES or
