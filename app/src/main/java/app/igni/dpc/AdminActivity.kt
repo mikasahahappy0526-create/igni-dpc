@@ -61,6 +61,8 @@ class AdminActivity : AppCompatActivity() {
         }
         binding.hiddenCount.text = getString(R.string.hidden_count, applier.hiddenCount())
         updateTimeoutLabel(applier.currentScreenTimeoutMs())
+        updateCameraLabel(applier.detectedCameraPackages())
+        binding.allowlist.text = applier.allowlistForDisplay().joinToString("\n")
         binding.lockTaskNote.isVisible = BuildConfig.ENABLE_LOCK_TASK
         binding.btnReapply.isEnabled = isOwner
         binding.btnUnhide.isEnabled = isOwner
@@ -74,6 +76,18 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateCameraLabel(cameras: List<String>) {
+        binding.cameraPackages.text = if (cameras.isEmpty()) {
+            getString(R.string.camera_packages_none)
+        } else {
+            getString(
+                R.string.camera_packages_value,
+                cameras.size,
+                cameras.joinToString("\n")
+            )
+        }
+    }
+
     private fun reapply() {
         setBusy(true)
         executor.execute {
@@ -84,6 +98,7 @@ class AdminActivity : AppCompatActivity() {
                 if (result.screenTimeoutMs != null) {
                     updateTimeoutLabel(result.screenTimeoutMs)
                 }
+                updateCameraLabel(result.cameraPackages)
                 val message = if (result.success) {
                     getString(R.string.toast_reapplied, result.hiddenCount, result.newlyHidden)
                 } else {

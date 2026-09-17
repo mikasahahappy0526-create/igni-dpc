@@ -15,7 +15,7 @@
 
 - `com.android.settings`（設定）および OEM Settings パッケージ
 - `com.android.vending`（Play ストア）
-- カメラ（`com.android.camera2` / `com.android.camera` / `com.google.android.GoogleCamera` および一般的な OEM カメラ）
+- カメラ（静的 OEM リスト + **動的検出**: `IMAGE_CAPTURE` / `STILL_IMAGE_CAMERA` / `VIDEO_CAMERA` ハンドラ、および packageName に `camera` を含む MAIN/LAUNCHER アプリ。適用時に必ず unhide）
 - `com.android.chrome`（Chrome；安定版が無い場合のみ beta）
 - この DPC 自身（`AdminActivity` — 「ポリシーを再適用」用の通常ランチャーアプリアイコン）
 - 標準の HOME ランチャー、SystemUI、IME など端末動作に必要なパッケージ
@@ -35,6 +35,17 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - `AdminActivity` は通常の `LAUNCHER` アイコン（「ポリシーを再適用」専用）。HOME には強制しません
 - 非許可リストのアプリは隠し、ストックランチャーに Settings / Play / Camera / Chrome（と OEM が置くもの）が残るようにします
 - ショートカットのサイレント pin は DO でもユーザー確認が必要なことが多く、信頼できないため行いません（hide + 標準ホームに依存）
+
+## カメラ保護（v1.0.4）
+
+一部 OEM ではカメラのパッケージ名が静的リストに無く、hide ポリシー適用後にホームからカメラが消えることがありました。v1.0.4 では:
+
+- `KeepPackages.detectCameraPackages()` が次を **動的** に keep 対象にします
+  - `MediaStore.ACTION_IMAGE_CAPTURE` / `android.media.action.IMAGE_CAPTURE` / `STILL_IMAGE_CAMERA` / `VIDEO_CAMERA` を解決するパッケージ
+  - MAIN/LAUNCHER があり packageName に `camera` を含むパッケージ（大文字小文字不問）
+  - 既存の静的リスト（Sony / Xiaomi / Transsion / Sharp / FCNT / Kyocera 等を拡充）
+- `PolicyApplier.apply()` のたびに検出したカメラを **明示的に unhide** し、`HiddenStore` からも除去
+- 管理画面（`AdminActivity`）に検出カメラパッケージ一覧を表示
 
 ## 表示ポリシー（v1.0.2+ / 強化 v1.0.3）
 

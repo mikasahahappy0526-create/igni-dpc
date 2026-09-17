@@ -16,7 +16,8 @@ data class ApplyResult(
     val hiddenCount: Int,
     val newlyHidden: Int = 0,
     val message: String? = null,
-    val screenTimeoutMs: Int? = null
+    val screenTimeoutMs: Int? = null,
+    val cameraPackages: List<String> = emptyList()
 )
 
 /**
@@ -26,6 +27,10 @@ data class ApplyResult(
  * Does **not** replace the system launcher — Home stays with the OEM/stock launcher.
  * Non-allowlist apps are hidden so the stock launcher only surfaces Settings / Play /
  * Camera / Chrome (plus whatever the OEM still places).
+ *
+ * Camera apps are detected dynamically (image-capture handlers + packageName contains
+ * "camera" + static OEM list) and are always unhidden on every apply(), even if they
+ * were previously stored in [HiddenStore].
  *
  * Also applies display defaults: system dark mode ON and screen-off timeout 30 minutes.
  *
@@ -47,6 +52,9 @@ class PolicyApplier(context: Context) {
 
     fun allowlistForDisplay(): List<String> = keep.describeKeepReasons()
 
+    /** Detected camera packages for Admin UI verification. */
+    fun detectedCameraPackages(): List<String> = keep.detectCameraPackages().sorted()
+
     /** Current Settings.System.SCREEN_OFF_TIMEOUT, or null if unreadable. */
     fun currentScreenTimeoutMs(): Int? {
         return runCatching {
@@ -60,25 +68,58 @@ class PolicyApplier(context: Context) {
     fun apply(): ApplyResult {
         if (!isDeviceOwner()) {
             Log.w(TAG, "Not device owner; skip apply")
-            return ApplyResult(success = false, hiddenCount = store.snapshot().size, message = "not_device_owner")
+            return ApplyResult(
+                success = false,
+                hiddenCount = store.snapshot().size,
+                message = "not_device_owner",
+                cameraPackages = detectedCameraPackages()
+            )
         }
 
         runCatching { dpm.setUninstallBlocked(admin, appContext.packageName, true) }
+
+        val cameras = keep.detectCameraPackages()
+        Log.i(TAG, "Camera keep/unhide set (${cameras.size}): ${cameras.sorted().joinToString()}")
+
+        val hidden = store.mutableCopy()
+
+        // Explicitly unhide every detected camera app and drop it from HiddenStore,
+        // even if a previous incomplete static list had hidden it.
+        var camerasUnhidden = 0
+        for (pkg in cameras) {
+            val wasHidden = dpm.isApplicationHidden(admin, pkg)
+            val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
+            if (hidden.remove(pkg)) {
+                Log.i(TAG, "Removed camera package $pkg from HiddenStore")
+            }
+            if (wasHidden && restored) {
+                camerasUnhidden++
+                Log.i(TAG, "Unhid camera package $pkg")
+            } else if (!wasHidden) {
+                Log.i(TAG, "Kept camera package $pkg (already visible)")
+            } else {
+                Log.w(TAG, "Failed to unhide camera package $pkg (restored=$restored)")
+            }
+        }
+        Log.i(TAG, "Camera unhide pass done: unhidden=$camerasUnhidden kept=${cameras.size}")
 
         // Safety: never leave keep-list packages hidden.
         for (pkg in installedPackageNames()) {
             if (keep.shouldKeep(pkg) && dpm.isApplicationHidden(admin, pkg)) {
                 val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
                 if (restored) {
+                    hidden.remove(pkg)
                     Log.i(TAG, "Unhid keep-list package $pkg")
                 }
             }
         }
 
-        val hidden = store.mutableCopy()
         var newlyHidden = 0
         for (pkg in launchablePackageNames()) {
             if (keep.shouldKeep(pkg)) continue
+            // Never hide a camera package solely because it lacks a standard name —
+            // image-capture handlers must survive (already covered by shouldKeep).
+            if (pkg in cameras) continue
             val ok = runCatching {
                 dpm.setApplicationHidden(admin, pkg, true)
             }.onFailure {
@@ -92,19 +133,15 @@ class PolicyApplier(context: Context) {
 
         // Optional kiosk allowlist. Default false — hide-only matches stock-launcher UX.
         if (BuildConfig.ENABLE_LOCK_TASK) {
+            val lockTaskPkgs = linkedSetOf(
+                "com.android.settings",
+                "com.android.vending",
+                "com.android.chrome",
+                appContext.packageName
+            )
+            lockTaskPkgs.addAll(cameras)
             runCatching {
-                dpm.setLockTaskPackages(
-                    admin,
-                    arrayOf(
-                        "com.android.settings",
-                        "com.android.vending",
-                        "com.android.chrome",
-                        "com.android.camera2",
-                        "com.android.camera",
-                        "com.google.android.GoogleCamera",
-                        appContext.packageName
-                    )
-                )
+                dpm.setLockTaskPackages(admin, lockTaskPkgs.toTypedArray())
             }.onFailure { Log.w(TAG, "setLockTaskPackages failed", it) }
         }
 
@@ -120,12 +157,17 @@ class PolicyApplier(context: Context) {
 
         store.replace(hidden)
         store.markApplied()
-        Log.i(TAG, "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden timeoutMs=$timeoutMs")
+        Log.i(
+            TAG,
+            "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden " +
+                "cameras=${cameras.size} timeoutMs=$timeoutMs"
+        )
         return ApplyResult(
             success = true,
             hiddenCount = hidden.size,
             newlyHidden = newlyHidden,
-            screenTimeoutMs = timeoutMs
+            screenTimeoutMs = timeoutMs,
+            cameraPackages = cameras.sorted()
         )
     }
 

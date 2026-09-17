@@ -118,6 +118,18 @@
             tools:text="画面オフタイムアウト: 1800000 ms" />
 
         <TextView
+            android:id="@+id/cameraPackages"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:fontFamily="monospace"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp"
+            tools:text="検出カメラ: com.android.camera2" />
+
+        <TextView
             android:id="@+id/lockTaskNote"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

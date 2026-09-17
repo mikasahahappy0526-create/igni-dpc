@@ -4,13 +4,19 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.provider.MediaStore
+import android.util.Log
 import android.view.inputmethod.InputMethodManager
 
 /**
  * Packages that must remain visible or installed for a usable dedicated terminal.
  *
- * Product allowlist (shown in the launcher): Settings + Play Store.
+ * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome.
  * Critical keep-list: System UI, provisioning, keyboards, default launcher, Play services, DPC, etc.
+ *
+ * Camera packages are detected dynamically (image-capture intent handlers, launcher apps
+ * whose packageName contains "camera") in addition to a static OEM list, so hide policy
+ * never removes the only camera app on an unfamiliar device.
  */
 class KeepPackages(private val context: Context) {
 
@@ -21,6 +27,7 @@ class KeepPackages(private val context: Context) {
         if (CRITICAL_PREFIXES.any { matchesPrefix(packageName, it) }) return true
         if (packageName in homeSystemPackages()) return true
         if (packageName in inputMethodPackages()) return true
+        if (packageName in detectCameraPackages()) return true
         return false
     }
 
@@ -30,8 +37,58 @@ class KeepPackages(private val context: Context) {
         return buildList {
             addAll(PRODUCT_ALLOWLIST)
             add(context.packageName)
+            // Show dynamically detected cameras that are not already in the static list.
+            for (pkg in detectCameraPackages().sorted()) {
+                if (pkg !in PRODUCT_ALLOWLIST && pkg != context.packageName) {
+                    add(pkg)
+                }
+            }
         }
     }
+
+    /**
+     * Camera packages that must stay unhidden: static OEM list + dynamic detection.
+     * Cached per KeepPackages instance (one PolicyApplier.apply() cycle).
+     */
+    fun detectCameraPackages(): Set<String> {
+        cachedCameraPackages?.let { return it }
+        val found = linkedSetOf<String>()
+
+        // 1) Static known OEM camera packages that are installed.
+        for (pkg in CAMERA_PACKAGES) {
+            if (isInstalled(pkg)) found.add(pkg)
+        }
+
+        // 2) Packages that resolve image / still / video camera intents.
+        for (action in CAMERA_INTENT_ACTIONS) {
+            val intent = Intent(action)
+            val resolved = runCatching {
+                context.packageManager.queryIntentActivities(intent, MATCH_FLAGS)
+            }.getOrDefault(emptyList())
+            for (info in resolved) {
+                val pkg = info.activityInfo?.packageName ?: continue
+                found.add(pkg)
+            }
+        }
+
+        // 3) MAIN/LAUNCHER activities whose packageName contains "camera".
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val launchable = runCatching {
+            context.packageManager.queryIntentActivities(launcher, MATCH_FLAGS)
+        }.getOrDefault(emptyList())
+        for (info in launchable) {
+            val pkg = info.activityInfo?.packageName ?: continue
+            if (pkg.contains("camera", ignoreCase = true)) {
+                found.add(pkg)
+            }
+        }
+
+        cachedCameraPackages = found
+        Log.i(TAG, "Detected camera packages (${found.size}): ${found.sorted().joinToString()}")
+        return found
+    }
+
+    private var cachedCameraPackages: Set<String>? = null
 
     private fun homeSystemPackages(): Set<String> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
@@ -55,9 +112,19 @@ class KeepPackages(private val context: Context) {
         }.getOrDefault(false)
     }
 
+    private fun isInstalled(packageName: String): Boolean {
+        return runCatching {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        }.getOrDefault(false)
+    }
+
     companion object {
+        private const val TAG = "IgniKeepPackages"
         private const val MATCH_FLAGS =
-            PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
+            PackageManager.MATCH_DISABLED_COMPONENTS or
+                PackageManager.MATCH_UNINSTALLED_PACKAGES or
+                PackageManager.MATCH_ALL
 
         const val PLAY_STORE_PACKAGE = "com.android.vending"
         const val CHROME_PACKAGE = "com.android.chrome"
@@ -69,17 +136,75 @@ class KeepPackages(private val context: Context) {
             "com.google.android.settings",
         )
 
+        /** Intent actions that identify camera / capture apps. */
+        val CAMERA_INTENT_ACTIONS: List<String> = listOf(
+            MediaStore.ACTION_IMAGE_CAPTURE, // android.media.action.IMAGE_CAPTURE
+            "android.media.action.IMAGE_CAPTURE",
+            "android.media.action.STILL_IMAGE_CAMERA",
+            MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA, // same string on most APIs
+            "android.media.action.VIDEO_CAMERA",
+            MediaStore.INTENT_ACTION_VIDEO_CAMERA,
+            MediaStore.ACTION_VIDEO_CAPTURE,
+        ).distinct()
+
         val CAMERA_PACKAGES: List<String> = listOf(
+            // AOSP / Google
             "com.android.camera2",
             "com.android.camera",
             "com.google.android.GoogleCamera",
+            "com.google.android.apps.cameralite",
+            // Samsung
             "com.sec.android.app.camera",
+            // MediaTek reference
             "com.mediatek.camera",
+            // Huawei / Honor
             "com.huawei.camera",
+            "com.hihonor.camera",
+            // Oppo / OnePlus / Realme (ColorOS / OxygenOS)
             "com.oplus.camera",
             "com.oneplus.camera",
+            "com.oppo.camera",
+            "com.realme.camera",
+            // Motorola
             "com.motorola.camera2",
+            "com.motorola.camera3",
+            // Qualcomm reference
             "org.codeaurora.snapcam",
+            // Sony
+            "com.sonyericsson.android.camera",
+            "com.sonymobile.android.camera",
+            // Xiaomi / Redmi / POCO
+            "com.android.camera",
+            "com.mlab.cam",
+            "com.xiaomi.scanner",
+            // Vivo / iQOO
+            "com.vivo.camera",
+            "com.android.bbkcamera",
+            // Transsion (Tecno / Infinix / itel)
+            "com.transsion.camera",
+            "com.tecno.camera",
+            "com.infinix.camera",
+            "com.itel.camera",
+            // Sharp / SoftBank Aquos
+            "jp.co.sharp.android.camera",
+            "com.sharp.android.camera",
+            "jp.co.sharp.camera",
+            // FCNT (Fujitsu / arrows)
+            "com.fujitsu.mobile_phone.camera",
+            "com.fcnt.camera",
+            "jp.co.fujitsufilm.camera",
+            // Kyocera
+            "com.kyocera.camera",
+            "jp.kyocera.camera",
+            "com.kyocera.android.camera",
+            // LG (legacy)
+            "com.lge.camera",
+            // ASUS
+            "com.asus.camera",
+            // Nokia / HMD
+            "com.evenwell.camera",
+            "com.hmdglobal.camera2",
+            // Fairphone / others
         )
 
         /** User-facing apps that must stay launchable from the dedicated home. */
@@ -90,7 +215,7 @@ class KeepPackages(private val context: Context) {
             "com.google.android.settings",
             // Play Store
             PLAY_STORE_PACKAGE,
-            // Camera (+ common OEM packages)
+            // Camera (+ common OEM packages) — also expanded dynamically at runtime
             "com.android.camera2",
             "com.android.camera",
             "com.google.android.GoogleCamera",
@@ -101,6 +226,15 @@ class KeepPackages(private val context: Context) {
             "com.oneplus.camera",
             "com.motorola.camera2",
             "org.codeaurora.snapcam",
+            "com.sonyericsson.android.camera",
+            "com.sonymobile.android.camera",
+            "com.transsion.camera",
+            "jp.co.sharp.android.camera",
+            "com.sharp.android.camera",
+            "com.fujitsu.mobile_phone.camera",
+            "com.fcnt.camera",
+            "com.kyocera.camera",
+            "jp.kyocera.camera",
             // Chrome (stable; beta only if used as fallback launch target — keep installed)
             CHROME_PACKAGE,
             CHROME_BETA_PACKAGE,

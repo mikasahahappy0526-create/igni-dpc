@@ -12,6 +12,8 @@
     <string name="hidden_count">これまでに非表示にしたアプリ: %d 件</string>
     <string name="screen_timeout_value">画面オフタイムアウト: %d ms</string>
     <string name="screen_timeout_unknown">画面オフタイムアウト: （取得できません）</string>
+    <string name="camera_packages_value">検出カメラ (%1$d): %2$s</string>
+    <string name="camera_packages_none">検出カメラ: （なし — OEMカメラが見つかりません）</string>
     <string name="lock_task_note">Lock Task は BuildConfig.ENABLE_LOCK_TASK で有効化されています。</string>
     <string name="toast_reapplied">ポリシーを適用しました（非表示 %1$d 件、新規 %2$d 件）</string>
     <string name="toast_not_owner">Device Owner ではないため適用できません</string>
