@@ -24,7 +24,8 @@ import java.util.zip.ZipFile
  * 2. Resolve latest file from Uptodown eAPI (APK or XAPK) and download to cache.
  * 3. .apk → single PackageInstaller session (silent DO).
  * 4. .xapk → unzip, install all .apk splits in one session; OBB best-effort copy.
- * 5. Verify package when possible; on hard failure → Play Store market:// fallback.
+ * 5. On hard failure → log + status prefs only (never open Play from auto path).
+ *    Admin UI may call [openPlayStore] explicitly.
  *
  * Fire-and-forget; never blocks [app.igni.dpc.policy.PolicyApplier.apply].
  */
@@ -77,9 +78,8 @@ object LineInstaller {
             val resolved = UptodownClient.resolveLatestLine()
             if (resolved.isFailure) {
                 val err = resolved.exceptionOrNull()?.message ?: "resolve failed"
-                Log.w(TAG, "Uptodown resolve failed: $err — opening Play Store")
-                persist(app, "play_fallback", "解決失敗 ($err) → Play を開く")
-                openPlayStore(app)
+                Log.w(TAG, "Uptodown resolve failed: $err — silent path stops (no Play)")
+                persist(app, "silent_failed", "解決失敗 ($err)")
                 return
             }
             val info = resolved.getOrThrow()
@@ -94,9 +94,8 @@ object LineInstaller {
             val downloaded = UptodownClient.downloadTo(info.downloadUrl, dest)
             if (downloaded.isFailure) {
                 val err = downloaded.exceptionOrNull()?.message ?: "download failed"
-                Log.w(TAG, "LINE download failed: $err — opening Play Store")
-                persist(app, "play_fallback", "DL失敗 ($err) → Play を開く")
-                openPlayStore(app)
+                Log.w(TAG, "LINE download failed: $err — silent path stops (no Play)")
+                persist(app, "silent_failed", "DL失敗 ($err)")
                 return
             }
 
@@ -109,9 +108,8 @@ object LineInstaller {
             }
             if (installed.isFailure) {
                 val err = installed.exceptionOrNull()?.message ?: "install failed"
-                Log.w(TAG, "LINE silent install failed: $err — opening Play Store")
-                persist(app, "play_fallback", "サイレント失敗 ($err) → Play を開く")
-                openPlayStore(app)
+                Log.w(TAG, "LINE silent install failed: $err — silent path stops (no Play)")
+                persist(app, "silent_failed", "サイレント失敗 ($err)")
                 return
             }
             // Session committed; final success/failure arrives via LineInstallStatusReceiver.
@@ -308,7 +306,11 @@ object LineInstaller {
         }
     }
 
-    /** Opens Play Store LINE page; falls back to HTTPS if market:// fails. */
+    /**
+     * Opens Play Store LINE page; falls back to HTTPS if market:// fails.
+     * **Admin / explicit user action only** — never call from PolicyApplier / Boot /
+     * PackageMonitor / compliance / async ensure* auto paths.
+     */
     fun openPlayStore(context: Context) {
         val app = context.applicationContext
         val market = Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_MARKET_URI)).apply {

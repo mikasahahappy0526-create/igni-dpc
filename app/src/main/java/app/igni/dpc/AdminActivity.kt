@@ -44,7 +44,9 @@ class AdminActivity : AppCompatActivity() {
         binding.btnReturnPersonal.setOnClickListener { confirmReturnPersonal() }
         binding.btnUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallLine.setOnClickListener { installLine() }
+        binding.btnInstallLinePlay.setOnClickListener { installLineViaPlay() }
         binding.btnInstallChrome.setOnClickListener { installChrome() }
+        binding.btnInstallChromePlay.setOnClickListener { installChromeViaPlay() }
 
         maybeReapplyAfterVersionChange()
 
@@ -120,8 +122,10 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.isEnabled = !updateBusy.get()
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
         binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
     }
 
     private fun updateTimeoutLabel(timeoutMs: Int?) {
@@ -329,19 +333,31 @@ class AdminActivity : AppCompatActivity() {
     }
 
     private fun installChrome() {
-        // Play-first on UI thread so Samsung always shows Play; then Uptodown in background.
-        binding.chromeInstallStatus.text = "Chrome インストール: Play を開く…"
+        // Default: silent Uptodown only (no Play).
+        binding.chromeInstallStatus.text = "Chrome インストール: サイレント開始…"
         Toast.makeText(this, R.string.toast_chrome_install_started, Toast.LENGTH_SHORT).show()
-        if (!ChromeInstaller.isChromeInstalled(this)) {
-            ChromeInstaller.openPlayStore(this)
-        }
-        binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
         executor.execute {
             ChromeInstaller.ensureChromeInstalled(this)
             runOnUiThread {
                 binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
             }
         }
+    }
+
+    /** Explicit user action: open Play Store for LINE. */
+    private fun installLineViaPlay() {
+        binding.lineInstallStatus.text = "LINE インストール: Play を開く…"
+        Toast.makeText(this, R.string.toast_line_play_opened, Toast.LENGTH_SHORT).show()
+        LineInstaller.openPlayStore(this)
+        binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
+    }
+
+    /** Explicit user action: open Play Store for Chrome. */
+    private fun installChromeViaPlay() {
+        binding.chromeInstallStatus.text = "Chrome インストール: Play を開く…"
+        Toast.makeText(this, R.string.toast_chrome_play_opened, Toast.LENGTH_SHORT).show()
+        ChromeInstaller.openPlayStore(this)
+        binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
     }
 
 
@@ -406,7 +422,9 @@ class AdminActivity : AppCompatActivity() {
         binding.btnReturnPersonal.isEnabled = owner && !busy
         binding.btnUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
     }
 
     companion object {

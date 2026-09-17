@@ -169,6 +169,19 @@ Chrome / LINE / 更新 / 標準ホーム / ダーク / 音量ポリシーは変�
 
 - versionCode **17** / versionName **1.0.16**
 
+
+## v1.0.18（セットアップ中に Play を開かない）
+
+**Critical:** QR / Device Owner セットアップやポリシー再適用中に Google Play ログイン画面へ飛んでホーム到達を妨げる問題を修正。
+
+1. **自動経路では絶対に Play を開かない**: `PolicyApplier.apply()` / BootReceiver / PackageMonitor / compliance / PackageInstaller ステータス受信機 / `ensure*Async` から `openPlayStore` を呼ばない
+2. **LINE / Chrome 自動インストールはサイレントのみ**: Uptodown 取得 + `PackageInstaller`。失敗時はログとステータス prefs のみ
+3. **管理画面**: 「LINEを入れる」「Chromeを入れる」はサイレント。明示操作の「Playで入れる」ボタンのみ Play を開く
+4. **`ensureChromeInstalledPrompt` の Play-first**: apply から削除。Chrome は unhide 済みならそのまま、未導入ならサイレント試行のみ
+5. 標準ホーム / DO 解除 / 更新ボタン1つ / ダーク / 音量0 / アンインストール許可リストは維持
+
+- versionCode **19** / versionName **1.0.18**
+
 ## v1.0.17（更新ボタン統合）
 
 管理画面の自己更新を **「最新版に更新」** のワンタップフローに統合しました。
@@ -331,8 +344,8 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **個人用に戻す（Device Owner解除）**（v1.0.16）— 確認後に非表示アプリを再表示し Device Owner を解除。イグニは通常アプリになる。アンインストール済みアプリは戻らない
 - **最新版に更新**（v1.0.17+）— GitHub API を確認し、更新があればミラー `d.apk` を取得して同じ署名キーで Device Owner として自己更新（工場出荷リセット／QR 不要）
-- **LINEを入れる**（v1.0.13+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時は Play。免責文を表示
-- **Chromeを入れる**（v1.0.15+）— Play を先に開き、続けて Uptodown サイレント。Chrome は適用時に絶対アンインストール／非表示しない。更新 APK はミラー `d.apk` 優先
+- **LINEを入れる**（v1.0.18+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時はステータスのみ（自動では Play を開かない）。「Playで入れる」で明示起動。免責文を表示
+- **Chromeを入れる**（v1.0.18+）— 既定は Uptodown サイレントのみ。Play は「Playで入れる」明示ボタンのみ。適用時に Play は開かない。Chrome は適用時に絶対アンインストール／非表示しない
 - 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - **音声**: 着信モード（SILENT/VIBRATE/…）とメディア／着信音量

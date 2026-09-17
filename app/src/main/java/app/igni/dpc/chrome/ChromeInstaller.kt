@@ -26,11 +26,11 @@ import java.util.zip.ZipFile
 /**
  * Ensures Chrome ([KeepPackages.CHROME_PACKAGE]) is installed after Device Owner policy apply.
  *
- * Strategy (v1.0.15 Play-first):
+ * Strategy (v1.0.18 silent-only auto):
  * 1. If package present but DPM-hidden / disabled → unhide / enable; treat as installed only if usable.
- * 2. If missing → immediately open Play Store on the main looper (visible path on Samsung).
- * 3. Optionally still try Uptodown silent install in the background.
- * 4. Hard failures of silent path still open Play again as fallback.
+ * 2. If missing → Uptodown download + PackageInstaller only (no Play).
+ * 3. Hard failures → log + status prefs only; never open Play from auto paths.
+ * 4. Admin UI may call [openPlayStore] as an explicit user action.
  *
  * Fire-and-forget; never blocks [app.igni.dpc.policy.PolicyApplier.apply].
  */
@@ -60,9 +60,9 @@ object ChromeInstaller {
     }
 
     /**
-     * Policy-apply prompt: if Chrome is still missing after force-unhide, post Play Store
-     * open to the main looper immediately, then optionally try Uptodown in the background.
-     * Never blocks the caller.
+     * Policy-apply helper (v1.0.18): unhide/enable via [isChromeInstalled]; if still missing,
+     * persist status only and kick silent Uptodown async. **Never opens Play.**
+     * Prefer calling [ensureChromeInstalledAsync] from [app.igni.dpc.policy.PolicyApplier] directly.
      */
     fun ensureChromeInstalledPrompt(context: Context) {
         val app = context.applicationContext
@@ -71,18 +71,14 @@ object ChromeInstaller {
             persist(app, "already_installed", "Chrome はインストール済み")
             return
         }
-        persist(app, "play_prompt", "Play ストアを開いています…")
-        mainHandler.post {
-            Log.i(TAG, "ensureChromeInstalledPrompt: opening Play on main looper")
-            openPlayStoreNow(app)
-        }
-        // Background Uptodown (Play already queued on main).
+        Log.i(TAG, "ensureChromeInstalledPrompt: Chrome missing — status only + silent async (no Play)")
+        persist(app, "missing", "未インストール — サイレント試行のみ（Play は開かない）")
         ensureChromeInstalledAsync(app)
     }
 
     /**
-     * Synchronous attempt (call from a worker thread). Safe to call from Admin UI button.
-     * Skips overlapping runs. Opens Play first, then tries Uptodown silent.
+     * Synchronous silent attempt (worker thread). Safe for Admin「Chromeを入れる」default.
+     * Skips overlapping runs. Uptodown + PackageInstaller only — never opens Play.
      */
     fun ensureChromeInstalled(context: Context) {
         val app = context.applicationContext
@@ -101,17 +97,12 @@ object ChromeInstaller {
                 return
             }
 
-            // Play-first: visible path before any network/Uptodown work.
-            persist(app, "play_first", "Play を開く（並行で Uptodown 試行）")
-            openPlayStore(app)
-
             persist(app, "resolving", "Uptodown から最新 URL を解決中…")
             val resolved = UptodownClient.resolveLatestChrome()
             if (resolved.isFailure) {
                 val err = resolved.exceptionOrNull()?.message ?: "resolve failed"
-                Log.w(TAG, "Uptodown resolve failed: $err — Play already opened")
-                persist(app, "play_fallback", "解決失敗 ($err) → Play を開済")
-                openPlayStore(app)
+                Log.w(TAG, "Uptodown resolve failed: $err — silent path stops (no Play)")
+                persist(app, "silent_failed", "解決失敗 ($err)")
                 return
             }
             val info = resolved.getOrThrow()
@@ -126,9 +117,8 @@ object ChromeInstaller {
             val downloaded = UptodownClient.downloadTo(info.downloadUrl, dest)
             if (downloaded.isFailure) {
                 val err = downloaded.exceptionOrNull()?.message ?: "download failed"
-                Log.w(TAG, "Chrome download failed: $err — Play already opened")
-                persist(app, "play_fallback", "DL失敗 ($err) → Play を開済")
-                openPlayStore(app)
+                Log.w(TAG, "Chrome download failed: $err — silent path stops (no Play)")
+                persist(app, "silent_failed", "DL失敗 ($err)")
                 return
             }
 
@@ -141,9 +131,8 @@ object ChromeInstaller {
             }
             if (installed.isFailure) {
                 val err = installed.exceptionOrNull()?.message ?: "install failed"
-                Log.w(TAG, "Chrome silent install failed: $err — opening Play Store")
-                persist(app, "play_fallback", "サイレント失敗 ($err) → Play を開く")
-                openPlayStore(app)
+                Log.w(TAG, "Chrome silent install failed: $err — silent path stops (no Play)")
+                persist(app, "silent_failed", "サイレント失敗 ($err)")
                 return
             }
             if (isChromeInstalled(app)) {
@@ -413,6 +402,8 @@ object ChromeInstaller {
 
     /**
      * Opens Play Store Chrome page on the main looper (Samsung-friendly).
+     * **Admin / explicit user action only** — never call from PolicyApplier / Boot /
+     * PackageMonitor / compliance / async ensure* auto paths.
      * Uses NEW_TASK | CLEAR_TOP | RESET_TASK_IF_NEEDED + CATEGORY_BROWSABLE.
      * Prefer com.android.vending; fall back to generic market:// then HTTPS.
      */

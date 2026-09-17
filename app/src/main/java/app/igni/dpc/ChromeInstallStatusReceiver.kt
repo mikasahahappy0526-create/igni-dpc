@@ -9,6 +9,7 @@ import app.igni.dpc.chrome.ChromeInstaller
 
 /**
  * Receives [PackageInstaller] status for silent Chrome installs.
+ * Never opens Play Store or starts confirm activities (those interrupt setup / home).
  */
 class ChromeInstallStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -21,29 +22,13 @@ class ChromeInstallStatusReceiver : BroadcastReceiver() {
                 ChromeInstaller.persistSuccess(context)
             }
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                Log.w(TAG, "Chrome install needs user action: $message — opening Play Store")
-                ChromeInstaller.persistFailure(context, "user_action: $message")
-                val confirm = if (android.os.Build.VERSION.SDK_INT >= 33) {
-                    intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableExtra(Intent.EXTRA_INTENT)
-                }
-                if (confirm != null) {
-                    confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    runCatching { context.startActivity(confirm) }
-                        .onFailure {
-                            Log.w(TAG, "Could not start confirm activity; Play fallback", it)
-                            ChromeInstaller.openPlayStore(context)
-                        }
-                } else {
-                    ChromeInstaller.openPlayStore(context)
-                }
+                // Do not start confirm UI or Play — would hijack setup wizard / home.
+                Log.w(TAG, "Chrome install needs user action (ignored, no Play): $message")
+                ChromeInstaller.persistFailure(context, "user_action_ignored: $message")
             }
             else -> {
-                Log.w(TAG, "Chrome install failure status=$status msg=$message")
+                Log.w(TAG, "Chrome install failure status=$status msg=$message (no Play)")
                 ChromeInstaller.persistFailure(context, "status=$status msg=$message")
-                ChromeInstaller.openPlayStore(context)
             }
         }
     }

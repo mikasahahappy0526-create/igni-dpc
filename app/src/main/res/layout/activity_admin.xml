@@ -170,6 +170,17 @@
             app:cornerRadius="14dp"
             app:strokeColor="@color/igni_outline" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnInstallLinePlay"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="4dp"
+            android:text="@string/btn_install_line_play"
+            android:textColor="@color/igni_muted"
+            android:textSize="14sp" />
+
         <TextView
             android:id="@+id/lineInstallStatus"
             android:layout_width="match_parent"
@@ -215,6 +226,17 @@
             android:textSize="16sp"
             app:cornerRadius="14dp"
             app:strokeColor="@color/igni_outline" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnInstallChromePlay"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="4dp"
+            android:text="@string/btn_install_chrome_play"
+            android:textColor="@color/igni_muted"
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/chromeInstallStatus"

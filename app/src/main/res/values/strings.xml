@@ -51,15 +51,19 @@
     <string name="toast_update_installing">インストールを開始しました</string>
 
     <string name="btn_install_line">LINEを入れる</string>
+    <string name="btn_install_line_play">Playで入れる（LINE）</string>
     <string name="line_status_idle">LINE インストール: 未試行</string>
-    <string name="line_install_note">ポリシー適用後、LINE 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時は Play ストアを開きます。</string>
+    <string name="line_install_note">ポリシー適用後、LINE 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時はログとステータスのみ（自動では Play を開きません）。管理画面の「Playで入れる」から明示的に開けます。</string>
     <string name="toast_line_install_started">LINE インストールを開始しました</string>
+    <string name="toast_line_play_opened">Play ストアで LINE を開きました</string>
     <string name="line_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 
     <string name="btn_install_chrome">Chromeを入れる</string>
+    <string name="btn_install_chrome_play">Playで入れる（Chrome）</string>
     <string name="chrome_status_idle">Chrome インストール: 未試行</string>
-    <string name="chrome_install_note">ポリシー適用後、Chrome 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時は Play ストアを開きます。適用時に Chrome は絶対にアンインストール／非表示しません。</string>
+    <string name="chrome_install_note">ポリシー適用後、Chrome 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時はログとステータスのみ（自動では Play を開きません）。管理画面の「Playで入れる」から明示的に開けます。適用時に Chrome は絶対にアンインストール／非表示しません。</string>
     <string name="toast_chrome_install_started">Chrome インストールを開始しました</string>
+    <string name="toast_chrome_play_opened">Play ストアで Chrome を開きました</string>
     <string name="chrome_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 
     <string name="btn_return_personal">個人用に戻す（Device Owner解除）</string>
