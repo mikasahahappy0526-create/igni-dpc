@@ -182,6 +182,18 @@
             android:textSize="13sp" />
 
         <TextView
+            android:id="@+id/lineDisclaimer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="6dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/line_disclaimer"
+            android:textColor="@color/igni_orange"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"

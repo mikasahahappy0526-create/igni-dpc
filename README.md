@@ -39,7 +39,7 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - `PolicyApplier.apply()` のたび: `clearPackagePersistentPreferredActivities(admin, packageName)` のみ。**`addPersistentPreferredActivity` は呼ばない**
 - ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・LINE・カメラがランチャーに残る
 - Chrome: 適用時に明示 unhide。lock-task 既定オフ。カスタムホームによるブラウザ intent 横取りなし
-- LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。未インストール時は適用後にサイレント APK → Play フォールバック（v1.0.12）
+- LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。未インストール時は適用後に Uptodown 最新（APK/XAPK）→ Play フォールバック（v1.0.13）
 
 ## カメラ保護（v1.0.4）
 
@@ -122,6 +122,19 @@ v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインスト�
 **注意**: このリポジトリ／タスクでは LINE APK を再配布しません。サイレントインストールには、短いミラー `mikasahahappy0526-create/i` の release `1` にユーザーが合法に用意した `line.apk` を置く必要があります。無い場合は常に Play が開きます。
 
 - versionCode **13** / versionName **1.0.12**
+
+## v1.0.13（Uptodown 最新 LINE / XAPK）
+
+ポリシー適用後、LINE が未インストールなら **Uptodown** から最新版を解決してサイレントインストールします（`apply()` は待たない）。ユーザーは第三者リスクを了承済み。
+
+1. **解決**: Uptodown Android eAPI（HMAC → Bearer）で `jp.naver.line.android` の最新 `fileID` を取得し、`dw.uptodown.com` CDN URL を都度解決（固定 URL は使わない）
+2. **インストール**: `.apk` は単体、`.xapk` は zip 展開して base+splits を同一 PackageInstaller セッションで投入。OBB はベストエフォートで `Android/obb/jp.naver.line.android/` へコピー
+3. **フォールバック**: 解決／DL／インストール失敗時は Play ストア（`market://details?id=jp.naver.line.android`）
+4. 管理画面「**LINEを入れる**」は同じフロー。免責: **非公式配布（Uptodown）・改変リスクあり・Playより危険**
+5. 許可リスト・標準ホーム・ダーク・音量・自己更新は維持
+
+- versionCode **14** / versionName **1.0.13**
+
 
 ## 音声ポリシー（v1.0.8）
 
@@ -256,7 +269,7 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（Igni HOME 解除・Chrome unhide・ダーク強化・タイムアウト再設定・マナー／音量0 含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
-- **LINEを入れる**（v1.0.12+）— サイレント APK（ミラーの `line.apk`）を試し、無ければ Play ストアの LINE ページを開く。直近ステータスを表示
+- **LINEを入れる**（v1.0.13+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時は Play。免責文を表示
 - 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - **音声**: 着信モード（SILENT/VIBRATE/…）とメディア／着信音量

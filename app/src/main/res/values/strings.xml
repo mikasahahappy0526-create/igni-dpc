@@ -55,6 +55,7 @@
 
     <string name="btn_install_line">LINEを入れる</string>
     <string name="line_status_idle">LINE インストール: 未試行</string>
-    <string name="line_install_note">ポリシー適用後、LINE 未インストールならサイレント APK（短いミラーの line.apk）を試し、無ければ Play ストアの LINE ページを開きます。</string>
+    <string name="line_install_note">ポリシー適用後、LINE 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時は Play ストアを開きます。</string>
     <string name="toast_line_install_started">LINE インストールを開始しました</string>
+    <string name="line_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 </resources>

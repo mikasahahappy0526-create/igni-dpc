@@ -19,19 +19,12 @@ android {
         applicationId = "app.igni.dpc"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.0.12"
+        versionCode = 14
+        versionName = "1.0.13"
 
         // Hide-based dedicated terminal is the default.
         // Set true only if you want Settings / Play Store / this DPC to be lock-task allowlisted.
         buildConfigField("boolean", "ENABLE_LOCK_TASK", "false")
-        // Optional silent LINE APK (upload line.apk to mikasahahappy0526-create/i release 1).
-        // If 404/unavailable, LineInstaller opens Play Store instead.
-        buildConfigField(
-            "String",
-            "LINE_APK_URL",
-            "\"https://github.com/mikasahahappy0526-create/i/releases/download/1/line.apk\""
-        )
     }
 
     signingConfigs {
