@@ -168,6 +168,8 @@ class AdminActivity : AppCompatActivity() {
             status.result,
             status.detail
         )
+        val nightThemeLabel = status.displayNightTheme?.toString() ?: "—"
+        binding.darkModeSamsung.text = getString(R.string.dark_mode_samsung, nightThemeLabel)
         val showNote = status.sdkInt < 29
         binding.darkModeNote.isVisible = showNote
         if (showNote) {

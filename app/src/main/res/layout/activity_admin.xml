@@ -250,6 +250,16 @@
             tools:text="ダーク適用結果: success" />
 
         <TextView
+            android:id="@+id/darkModeSamsung"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp"
+            tools:text="Samsung display_night_theme: 1" />
+
+        <TextView
             android:id="@+id/darkModeNote"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

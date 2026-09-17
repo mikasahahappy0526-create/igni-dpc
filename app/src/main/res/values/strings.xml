@@ -19,6 +19,7 @@
     <string name="dark_mode_sdk">Android SDK: %1$d（%2$s）</string>
     <string name="dark_mode_apis">ダークAPI: UiModeManager=%1$s / setNightModeActivated=%2$s / システム暗色テーマ想定=%3$s</string>
     <string name="dark_mode_result">ダーク適用結果: %1$s\n%2$s</string>
+    <string name="dark_mode_samsung">Samsung display_night_theme: %1$s</string>
     <string name="dark_mode_note_pre_q">この OS（Android 10 未満）ではシステム全体のダークテーマが利用できない場合があります。</string>
     <string name="audio_status_value">音声: 着信モード=%1$s / メディア=%2$s / 着信音=%3$s</string>
     <string name="audio_status_unknown">音声: （取得できません）</string>

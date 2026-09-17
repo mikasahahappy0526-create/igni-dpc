@@ -52,6 +52,8 @@ data class DarkModeStatus(
     val uiModeManagerAvailable: Boolean,
     val setNightModeActivatedAvailable: Boolean,
     val systemDarkThemeLikely: Boolean,
+    /** Samsung One UI Settings.System display_night_theme read-back (1 = on), or null if unread. */
+    val displayNightTheme: Int? = null,
     val result: String,
     val detail: String
 )
@@ -104,11 +106,17 @@ class PolicyApplier(context: Context) {
         if (stored == null) {
             return probeDarkModeCapabilities(result = "never", detail = "未適用")
         }
+        val nightThemeStored = if (darkPrefs.contains(KEY_DARK_NIGHT_THEME)) {
+            darkPrefs.getInt(KEY_DARK_NIGHT_THEME, -1).takeIf { it >= 0 }
+        } else {
+            null
+        }
         return DarkModeStatus(
             sdkInt = darkPrefs.getInt(KEY_DARK_SDK, Build.VERSION.SDK_INT),
             uiModeManagerAvailable = darkPrefs.getBoolean(KEY_DARK_UIM_OK, true),
             setNightModeActivatedAvailable = darkPrefs.getBoolean(KEY_DARK_ACTIVATED_OK, false),
             systemDarkThemeLikely = darkPrefs.getBoolean(KEY_DARK_LIKELY, Build.VERSION.SDK_INT >= 29),
+            displayNightTheme = nightThemeStored,
             result = stored,
             detail = darkPrefs.getString(KEY_DARK_DETAIL, "").orEmpty()
         )
@@ -479,7 +487,8 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Stronger system-wide night mode for OEM devices (e.g. Sharp AQUOS sense3 on 9/10).
+     * Stronger system-wide night mode for OEM devices (Sharp / Samsung One UI Galaxy A23, etc.).
+     * Also tries Samsung `display_night_theme=1` and reflective DPM Secure/System settings.
      * Failures are logged; apply() still succeeds. Result is persisted for Admin UI.
      */
     private fun applyDarkMode(): DarkModeStatus {
@@ -499,6 +508,7 @@ class PolicyApplier(context: Context) {
         val notes = mutableListOf<String>()
         var anySuccess = false
 
+        // 1) Standard UiModeManager + Secure ui_night_mode=2
         runCatching {
             uiMode?.setNightMode(UiModeManager.MODE_NIGHT_YES)
             anySuccess = true
@@ -533,15 +543,27 @@ class PolicyApplier(context: Context) {
             notes += "secure.ui_night_mode=fail"
         }
 
-        // Additional OEM-safe Secure / System keys used by various skins (best-effort).
-        // Values: dark_theme often 1=on; night_mode / ui_night_mode often 2=yes.
+        // 2) Samsung One UI classic: Settings.System display_night_theme = 1
+        if (putSystemInt(SYSTEM_DISPLAY_NIGHT_THEME, 1)) {
+            anySuccess = true
+            notes += "system.display_night_theme=1"
+        } else {
+            notes += "system.display_night_theme=fail"
+        }
+
+        // 3) Known-safe OEM keys: dark_theme / theme_mode / night_mode (1 or 2 = on)
         val oemAttempts = listOf(
             SettingAttempt("secure", "dark_theme", 1),
             SettingAttempt("system", "dark_theme", 1),
+            SettingAttempt("secure", "theme_mode", 1),
+            SettingAttempt("system", "theme_mode", 1),
+            SettingAttempt("secure", "theme_mode", MODE_NIGHT_YES),
+            SettingAttempt("system", "theme_mode", MODE_NIGHT_YES),
             SettingAttempt("secure", "night_mode", MODE_NIGHT_YES),
             SettingAttempt("system", "night_mode", MODE_NIGHT_YES),
             SettingAttempt("system", "ui_night_mode", MODE_NIGHT_YES),
             SettingAttempt("global", "ui_night_mode", MODE_NIGHT_YES),
+            SettingAttempt("secure", SYSTEM_DISPLAY_NIGHT_THEME, 1),
         )
         for (attempt in oemAttempts) {
             val ok = when (attempt.table) {
@@ -554,26 +576,101 @@ class PolicyApplier(context: Context) {
                 anySuccess = true
                 notes += "${attempt.table}.${attempt.key}=${attempt.value}"
             }
+            // Failures already logged inside put*; skip adding every miss to Admin detail.
         }
 
-        // Trigger a configuration refresh when possible (UiModeManager already does on many OEMs).
+        // 4) Reflective DPM setSystemSetting / setSecureSetting for key night settings
+        if (dpmSetSystemSetting(SYSTEM_DISPLAY_NIGHT_THEME, "1")) {
+            anySuccess = true
+            notes += "dpm.setSystemSetting.display_night_theme=1"
+        } else {
+            notes += "dpm.setSystemSetting.display_night_theme=fail"
+        }
+        if (dpmSetSystemSetting(SECURE_UI_NIGHT_MODE, MODE_NIGHT_YES.toString())) {
+            anySuccess = true
+            notes += "dpm.setSystemSetting.ui_night_mode=2"
+        } else {
+            notes += "dpm.setSystemSetting.ui_night_mode=fail"
+        }
+        if (dpmSetSecureSetting(SECURE_UI_NIGHT_MODE, MODE_NIGHT_YES.toString())) {
+            anySuccess = true
+            notes += "dpm.setSecureSetting.ui_night_mode=2"
+        } else {
+            notes += "dpm.setSecureSetting.ui_night_mode=fail"
+        }
+        if (dpmSetSecureSetting(SYSTEM_DISPLAY_NIGHT_THEME, "1")) {
+            anySuccess = true
+            notes += "dpm.setSecureSetting.display_night_theme=1"
+        } else {
+            notes += "dpm.setSecureSetting.display_night_theme=fail"
+        }
+
+        // 5) setApplicationNightMode if present; soft Samsung / night broadcasts
+        runCatching {
+            if (uiMode != null) {
+                val m = UiModeManager::class.java.getMethod(
+                    "setApplicationNightMode",
+                    Int::class.javaPrimitiveType
+                )
+                m.invoke(uiMode, MODE_NIGHT_YES)
+                anySuccess = true
+                notes += "setApplicationNightMode=ok"
+                Log.i(TAG, "UiModeManager.setApplicationNightMode(MODE_NIGHT_YES)")
+            }
+        }.onFailure {
+            notes += "setApplicationNightMode=skip"
+            Log.w(TAG, "setApplicationNightMode unavailable/failed", it)
+        }
+
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && uiMode != null) {
-                // Reading night mode forces some implementations to reconcile.
                 val current = uiMode.nightMode
                 Log.i(TAG, "UiModeManager.nightMode read-back=$current")
                 notes += "nightModeRead=$current"
             }
         }.onFailure { Log.w(TAG, "nightMode read-back failed", it) }
 
-        // Soft broadcast used by some OEM overlays (harmless if ignored).
         runCatching {
             val intent = Intent("android.intent.action.NIGHT_MODE_CHANGED")
                 .putExtra("night_mode", MODE_NIGHT_YES)
                 .setPackage(null)
             appContext.sendBroadcast(intent)
             notes += "broadcast.NIGHT_MODE_CHANGED"
-        }.onFailure { Log.w(TAG, "NIGHT_MODE_CHANGED broadcast failed", it) }
+            Log.i(TAG, "Sent android.intent.action.NIGHT_MODE_CHANGED")
+        }.onFailure {
+            notes += "broadcast.NIGHT_MODE_CHANGED=fail"
+            Log.w(TAG, "NIGHT_MODE_CHANGED broadcast failed", it)
+        }
+
+        // Samsung One UI theme listeners (best-effort; ignore if missing / blocked)
+        val samsungActions = listOf(
+            "com.samsung.android.theme.THEMEDARK_CHANGED",
+            "com.android.server.action.DISPLAY_NIGHT_THEME_CHANGED",
+            "com.samsung.intent.action.THEME_CHANGED",
+        )
+        for (action in samsungActions) {
+            runCatching {
+                val intent = Intent(action)
+                    .putExtra("dark_mode", true)
+                    .putExtra("display_night_theme", 1)
+                    .putExtra("night_mode", MODE_NIGHT_YES)
+                appContext.sendBroadcast(intent)
+                notes += "broadcast.$action"
+                Log.i(TAG, "Sent Samsung/theme broadcast $action")
+            }.onFailure {
+                notes += "broadcast.$action=fail"
+                Log.w(TAG, "Samsung broadcast $action failed", it)
+            }
+        }
+
+        // 6) Admin status: display_night_theme read-back after writes
+        val nightTheme = readSystemInt(SYSTEM_DISPLAY_NIGHT_THEME)
+        notes += if (nightTheme != null) {
+            "display_night_theme_read=$nightTheme"
+        } else {
+            "display_night_theme_read=null"
+        }
+        Log.i(TAG, "Samsung display_night_theme read-back=$nightTheme (want 1)")
 
         val result = when {
             !likely && !anySuccess -> "unsupported"
@@ -590,15 +687,56 @@ class PolicyApplier(context: Context) {
             uiModeManagerAvailable = uiModeOk,
             setNightModeActivatedAvailable = activatedApi,
             systemDarkThemeLikely = likely,
+            displayNightTheme = nightTheme,
             result = result,
             detail = notes.joinToString("; ")
         )
         persistDarkModeStatus(status)
-        Log.i(TAG, "Dark mode apply result=$result detail=${status.detail}")
+        Log.i(TAG, "Dark mode apply result=$result display_night_theme=$nightTheme detail=${status.detail}")
         return status
     }
 
     private data class SettingAttempt(val table: String, val key: String, val value: Int)
+
+    private fun readSystemInt(key: String): Int? {
+        return runCatching {
+            Settings.System.getInt(appContext.contentResolver, key)
+        }.onFailure {
+            Log.w(TAG, "Settings.System.getInt($key) failed", it)
+        }.getOrNull()
+    }
+
+    private fun dpmSetSystemSetting(key: String, value: String): Boolean {
+        return runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSystemSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, key, value)
+            Log.i(TAG, "DPM.setSystemSetting($key, $value)")
+            true
+        }.onFailure {
+            Log.w(TAG, "DPM.setSystemSetting($key) unavailable/failed", it)
+        }.getOrDefault(false)
+    }
+
+    private fun dpmSetSecureSetting(key: String, value: String): Boolean {
+        return runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSecureSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, key, value)
+            Log.i(TAG, "DPM.setSecureSetting($key, $value)")
+            true
+        }.onFailure {
+            Log.w(TAG, "DPM.setSecureSetting($key) unavailable/failed", it)
+        }.getOrDefault(false)
+    }
 
     private fun putSecureInt(key: String, value: Int): Boolean {
         return runCatching {
@@ -625,14 +763,19 @@ class PolicyApplier(context: Context) {
     }
 
     private fun persistDarkModeStatus(status: DarkModeStatus) {
-        darkPrefs.edit()
+        val editor = darkPrefs.edit()
             .putInt(KEY_DARK_SDK, status.sdkInt)
             .putBoolean(KEY_DARK_UIM_OK, status.uiModeManagerAvailable)
             .putBoolean(KEY_DARK_ACTIVATED_OK, status.setNightModeActivatedAvailable)
             .putBoolean(KEY_DARK_LIKELY, status.systemDarkThemeLikely)
             .putString(KEY_DARK_RESULT, status.result)
             .putString(KEY_DARK_DETAIL, status.detail)
-            .apply()
+        if (status.displayNightTheme != null) {
+            editor.putInt(KEY_DARK_NIGHT_THEME, status.displayNightTheme)
+        } else {
+            editor.remove(KEY_DARK_NIGHT_THEME)
+        }
+        editor.apply()
     }
 
     private fun probeDarkModeCapabilities(result: String, detail: String): DarkModeStatus {
@@ -651,6 +794,7 @@ class PolicyApplier(context: Context) {
             uiModeManagerAvailable = uiMode != null,
             setNightModeActivatedAvailable = activatedApi,
             systemDarkThemeLikely = sdk >= 29,
+            displayNightTheme = readSystemInt(SYSTEM_DISPLAY_NIGHT_THEME),
             result = result,
             detail = detail
         )
@@ -725,6 +869,8 @@ class PolicyApplier(context: Context) {
         private const val MODE_NIGHT_YES = UiModeManager.MODE_NIGHT_YES
         /** @hide Settings.Secure.UI_NIGHT_MODE */
         private const val SECURE_UI_NIGHT_MODE = "ui_night_mode"
+        /** Samsung One UI: Settings.System display_night_theme (1 = dark). */
+        private const val SYSTEM_DISPLAY_NIGHT_THEME = "display_night_theme"
         /** 30 minutes in milliseconds. */
         const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
         private const val MATCH_FLAGS =
@@ -739,5 +885,6 @@ class PolicyApplier(context: Context) {
         private const val KEY_DARK_LIKELY = "likely"
         private const val KEY_DARK_RESULT = "result"
         private const val KEY_DARK_DETAIL = "detail"
+        private const val KEY_DARK_NIGHT_THEME = "display_night_theme"
     }
 }

@@ -69,17 +69,33 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 
 `PolicyApplier.apply()`（プロビジョニング完了・起動・再適用時）で次も冪等に適用します。個別パスの失敗はログのみで、適用全体は止めません。
 
-- **ダークモード ON（強化）**:
+- **ダークモード ON（強化 / Samsung One UI v1.0.9）**:
   - `UiModeManager.setNightMode(MODE_NIGHT_YES)` / API 30+ は `setNightModeActivated(true)`（反射）
   - `Settings.Secure.ui_night_mode = 2`
-  - 追加で安全な OEM 系キーを試行: `dark_theme` / `night_mode` / `ui_night_mode`（Secure・System・Global）
-  - 結果を永続化し、管理画面に **Android SDK・API 有無・適用結果（success/fail/unsupported）** を表示
+  - **Samsung One UI**: `Settings.System.display_night_theme = 1`（Galaxy A23 等）
+  - 追加で安全な OEM 系キーを試行: `dark_theme` / `theme_mode` / `night_mode` / `ui_night_mode`（Secure・System・Global、1 または 2 = ON）
+  - Device Owner 時は反射で `DevicePolicyManager.setSystemSetting` / `setSecureSetting`（`ui_night_mode`・`display_night_theme`）も試行
+  - 書き込み後に `setApplicationNightMode`（あれば）と Samsung / night 系ブロードキャストをベストエフォート送信
+  - 結果を永続化し、管理画面に **Android SDK・API 有無・適用結果・display_night_theme 読み戻し** を表示
   - **SDK &lt; 29**（Android 10 未満）ではシステム暗色テーマが無い場合がある旨を日本語で注記（Sharp AQUOS sense3 の Android 9 など）
 - **画面オフ 30 分**:
   - `Settings.System.putInt(..., SCREEN_OFF_TIMEOUT, 1_800_000)` のあと **読み戻してログ**
   - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, SCREEN_OFF_TIMEOUT, "1800000")`（DO SystemApi）も試す
   - `setMaximumTimeToLock(30 min)` は補完として残す。一部 OEM ではキーガード／画面オフと干渉しうるため、**SCREEN_OFF_TIMEOUT が残ることを優先**
   - 管理画面（`AdminActivity`）に現在の `SCREEN_OFF_TIMEOUT`（ms）を表示し、再適用後に確認できる
+
+## Samsung One UI ダークモード（v1.0.9）
+
+Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だけではダークが効かないことがあります。v1.0.9 の `applyDarkMode()` は次を追加で試します（いずれもベストエフォート・例外は握りつぶし）。
+
+1. 既存: `UiModeManager` + `Settings.Secure.ui_night_mode=2`
+2. Samsung クラシック: `Settings.System.putInt(cr, "display_night_theme", 1)`
+3. 既知の安全キー: `dark_theme` / `theme_mode` / `night_mode`（System/Secure、1 または 2 = ON）
+4. 反射 `DPM.setSystemSetting` / `setSecureSetting` で `ui_night_mode` と `display_night_theme`
+5. 書き込み後: `setApplicationNightMode`（あれば）＋ Samsung / night 系ブロードキャスト
+6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
+
+v1.0.8 のマナーモード＋音量 0、ドック Home、更新ボタン、アンインストールは維持しています。
 
 ## 音声ポリシー（v1.0.8）
 
