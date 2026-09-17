@@ -58,4 +58,11 @@
     <string name="line_install_note">ポリシー適用後、LINE 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時は Play ストアを開きます。</string>
     <string name="toast_line_install_started">LINE インストールを開始しました</string>
     <string name="line_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
+
+    <string name="btn_install_chrome">Chromeを入れる</string>
+    <string name="chrome_status_idle">Chrome インストール: 未試行</string>
+    <string name="chrome_install_note">ポリシー適用後、Chrome 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時は Play ストアを開きます。適用時に Chrome は絶対にアンインストール／非表示しません。</string>
+    <string name="toast_chrome_install_started">Chrome インストールを開始しました</string>
+    <string name="chrome_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
+    <string name="update_status_mirror">更新: ミラーから取得（%1$s）</string>
 </resources>

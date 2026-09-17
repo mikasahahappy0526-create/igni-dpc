@@ -8,6 +8,7 @@ import androidx.core.view.isVisible
 import app.igni.dpc.databinding.ActivityAdminBinding
 import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.DarkModeStatus
+import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.PolicyApplier
 import app.igni.dpc.update.AppSelfUpdater
@@ -46,6 +47,7 @@ class AdminActivity : AppCompatActivity() {
         binding.btnCheckUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallUpdate.setOnClickListener { installUpdate() }
         binding.btnInstallLine.setOnClickListener { installLine() }
+        binding.btnInstallChrome.setOnClickListener { installChrome() }
 
         maybeReapplyAfterVersionChange()
 
@@ -121,6 +123,8 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallUpdate.isEnabled = !updateBusy.get() && pendingRelease != null
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
+        binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
+        binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
     }
 
     private fun updateTimeoutLabel(timeoutMs: Int?) {
@@ -263,10 +267,19 @@ class AdminActivity : AppCompatActivity() {
                     is CheckResult.UpdateAvailable -> {
                         pendingRelease = result.release
                         binding.btnInstallUpdate.isEnabled = true
-                        binding.updateStatus.text = getString(
-                            R.string.update_status_available,
-                            result.release.tagName
-                        )
+                        if (result.release.fromMirror) {
+                            val label = result.release.releaseName
+                                ?: result.release.tagName
+                            binding.updateStatus.text = getString(
+                                R.string.update_status_mirror,
+                                label
+                            )
+                        } else {
+                            binding.updateStatus.text = getString(
+                                R.string.update_status_available,
+                                result.release.tagName
+                            )
+                        }
                         Toast.makeText(
                             this,
                             getString(R.string.toast_update_available, result.release.tagName),
@@ -342,6 +355,17 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+    private fun installChrome() {
+        binding.chromeInstallStatus.text = "Chrome インストール: 開始…"
+        Toast.makeText(this, R.string.toast_chrome_install_started, Toast.LENGTH_SHORT).show()
+        executor.execute {
+            ChromeInstaller.ensureChromeInstalled(this)
+            runOnUiThread {
+                binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
+            }
+        }
+    }
+
     private fun setBusy(busy: Boolean) {
         binding.progress.isVisible = busy
         val owner = PolicyApplier(this).isDeviceOwner()
@@ -351,6 +375,7 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallUpdate.isEnabled =
             !busy && !updateBusy.get() && pendingRelease != null
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
     }
 
     companion object {

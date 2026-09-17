@@ -31,6 +31,18 @@ class KeepPackages(private val context: Context) {
         return false
     }
 
+    /**
+     * Hard deny for PackageInstaller.uninstall — defense in depth beyond [shouldKeep]
+     * (races / allowlist gaps must never remove Chrome, Play, Settings, LINE, or this DPC).
+     */
+    fun isHardDenyUninstall(packageName: String): Boolean {
+        if (packageName == context.packageName) return true
+        if (packageName in HARD_DENY_UNINSTALL) return true
+        if (packageName in CHROME_PACKAGES) return true
+        if (shouldKeep(packageName)) return true
+        return false
+    }
+
     fun productAllowlist(): List<String> = PRODUCT_ALLOWLIST.toList()
 
     fun describeKeepReasons(): List<String> {
@@ -129,7 +141,17 @@ class KeepPackages(private val context: Context) {
         const val PLAY_STORE_PACKAGE = "com.android.vending"
         const val CHROME_PACKAGE = "com.android.chrome"
         const val CHROME_BETA_PACKAGE = "com.chrome.beta"
+        const val CHROME_DEV_PACKAGE = "com.chrome.dev"
+        const val CHROME_CANARY_PACKAGE = "com.chrome.canary"
         const val LINE_PACKAGE = "jp.naver.line.android"
+
+        /** All Chrome package ids we must never uninstall/hide. */
+        val CHROME_PACKAGES: List<String> = listOf(
+            CHROME_PACKAGE,
+            CHROME_BETA_PACKAGE,
+            CHROME_DEV_PACKAGE,
+            CHROME_CANARY_PACKAGE,
+        )
 
         val SETTINGS_PACKAGES: List<String> = listOf(
             "com.android.settings",
@@ -208,6 +230,20 @@ class KeepPackages(private val context: Context) {
             // Fairphone / others
         )
 
+        /**
+         * Absolute never-uninstall set (in addition to [shouldKeep]).
+         * Checked in [PolicyApplier] before PackageInstaller.uninstall.
+         */
+        val HARD_DENY_UNINSTALL: Set<String> = linkedSetOf(
+            CHROME_PACKAGE,
+            CHROME_BETA_PACKAGE,
+            CHROME_DEV_PACKAGE,
+            CHROME_CANARY_PACKAGE,
+            PLAY_STORE_PACKAGE,
+            "com.android.settings",
+            LINE_PACKAGE,
+        )
+
         /** User-facing apps that must stay launchable from the dedicated home. */
         val PRODUCT_ALLOWLIST: Set<String> = linkedSetOf(
             // Settings (+ OEM variants)
@@ -236,9 +272,11 @@ class KeepPackages(private val context: Context) {
             "com.fcnt.camera",
             "com.kyocera.camera",
             "jp.kyocera.camera",
-            // Chrome (stable; beta only if used as fallback launch target — keep installed)
+            // Chrome (stable + channels — never uninstall/hide)
             CHROME_PACKAGE,
             CHROME_BETA_PACKAGE,
+            CHROME_DEV_PACKAGE,
+            CHROME_CANARY_PACKAGE,
             // LINE
             LINE_PACKAGE,
         )

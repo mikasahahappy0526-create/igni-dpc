@@ -12,7 +12,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Resolves the latest LINE (jp.naver.line.android) download URL from Uptodown's Android eAPI.
+ * Resolves the latest download URL for a package from Uptodown's Android eAPI.
  *
  * Flow (reverse-engineered from Uptodown Android 7.38):
  * 1. HMAC-SHA256(auth seed, unixtime) → POST /eapi/auth/token → Bearer JWT
@@ -26,9 +26,12 @@ object UptodownClient {
 
     private const val TAG = "IgniUptodown"
     private const val EAPI = "https://www.uptodown.app/eapi"
-    private const val PAGE_JP = "https://line.jp.uptodown.com/android"
-    private const val PAGE_EN = "https://line.en.uptodown.com/android"
+    private const val LINE_PAGE_JP = "https://line.jp.uptodown.com/android"
+    private const val LINE_PAGE_EN = "https://line.en.uptodown.com/android"
+    private const val CHROME_PAGE_EN = "https://google-chrome.en.uptodown.com/android"
+    private const val CHROME_PAGE_JP = "https://google-chrome.jp.uptodown.com/android"
     const val LINE_PACKAGE = "jp.naver.line.android"
+    const val CHROME_PACKAGE = "com.android.chrome"
 
     /** Native getAuthApikey() seed from Uptodown Android 7.38 (libuptodown-native.so). */
     private const val AUTH_SEED = "MDGMXUMdvHJBG/vjdFgmqX6LUdy7ecfwvYNd0gyfOCs="
@@ -50,14 +53,39 @@ object UptodownClient {
     )
 
     /** Resolve latest LINE CDN URL (APK or XAPK). */
-    fun resolveLatestLine(): Result<ResolvedDownload> = runCatching {
-        val token = fetchAuthToken()
-        val appId = fetchAppId(token, LINE_PACKAGE)
-        val (fileId, version, kind) = resolveLatestFile(appId)
-        val (url, sha) = fetchDownloadUrl(token, appId, fileId)
-        Log.i(TAG, "Resolved LINE appId=$appId fileId=$fileId ver=$version kind=$kind")
-        ResolvedDownload(appId, fileId, version, kind, url, sha)
-    }.onFailure { Log.w(TAG, "resolveLatestLine failed", it) }
+    fun resolveLatestLine(): Result<ResolvedDownload> =
+        resolveLatest(
+            LINE_PACKAGE,
+            listOf(
+                LINE_PAGE_EN,
+                LINE_PAGE_JP,
+                "$LINE_PAGE_EN/download",
+                "$LINE_PAGE_JP/download"
+            )
+        )
+
+    /** Resolve latest Chrome (com.android.chrome) CDN URL (APK or XAPK). */
+    fun resolveLatestChrome(): Result<ResolvedDownload> =
+        resolveLatest(
+            CHROME_PACKAGE,
+            listOf(
+                CHROME_PAGE_EN,
+                CHROME_PAGE_JP,
+                "$CHROME_PAGE_EN/download",
+                "$CHROME_PAGE_JP/download"
+            )
+        )
+
+    /** Resolve latest CDN URL for [packageName] using candidate Uptodown page bases. */
+    fun resolveLatest(packageName: String, pages: List<String>): Result<ResolvedDownload> =
+        runCatching {
+            val token = fetchAuthToken()
+            val appId = fetchAppId(token, packageName)
+            val (fileId, version, kind) = resolveLatestFile(appId, pages)
+            val (url, sha) = fetchDownloadUrl(token, appId, fileId)
+            Log.i(TAG, "Resolved $packageName appId=$appId fileId=$fileId ver=$version kind=$kind")
+            ResolvedDownload(appId, fileId, version, kind, url, sha)
+        }.onFailure { Log.w(TAG, "resolveLatest($packageName) failed", it) }
 
     fun downloadTo(url: String, dest: File): Result<File> = runCatching {
         dest.parentFile?.mkdirs()
@@ -132,43 +160,49 @@ object UptodownClient {
     }
 
     /**
-     * Prefer public versions JSON (no captcha); fall back to HTML data-file-id on JP/EN pages.
+     * Prefer public versions JSON (no captcha); fall back to HTML data-file-id on pages.
      */
-    private fun resolveLatestFile(appId: String): Triple<String, String?, String?> {
-        runCatching {
-            val url = "$PAGE_EN/apps/$appId/versions/1"
-            val conn = open(url, method = "GET", accept = "application/json", userAgent = BROWSER_UA)
-            try {
-                val code = conn.responseCode
-                val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
-                if (code in 200..299) {
-                    val arr = JSONObject(text).optJSONArray("data")
-                    if (arr != null && arr.length() > 0) {
-                        val first = arr.getJSONObject(0)
-                        val fileId = first.opt("fileID")?.toString()
-                            ?: first.opt("fileId")?.toString()
-                        if (!fileId.isNullOrBlank()) {
-                            return Triple(
-                                fileId,
-                                first.optString("version").takeIf { it.isNotBlank() },
-                                first.optString("kindFile").ifBlank {
-                                    first.optString("titleKindFile")
-                                }.takeIf { it.isNotBlank() }
-                            )
+    private fun resolveLatestFile(
+        appId: String,
+        pages: List<String>
+    ): Triple<String, String?, String?> {
+        for (page in pages) {
+            runCatching {
+                val base = page.removeSuffix("/download")
+                val url = "$base/apps/$appId/versions/1"
+                val conn = open(url, method = "GET", accept = "application/json", userAgent = BROWSER_UA)
+                try {
+                    val code = conn.responseCode
+                    val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                        ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    if (code in 200..299) {
+                        val arr = JSONObject(text).optJSONArray("data")
+                        if (arr != null && arr.length() > 0) {
+                            val first = arr.getJSONObject(0)
+                            val fileId = first.opt("fileID")?.toString()
+                                ?: first.opt("fileId")?.toString()
+                            if (!fileId.isNullOrBlank()) {
+                                return Triple(
+                                    fileId,
+                                    first.optString("version").takeIf { it.isNotBlank() },
+                                    first.optString("kindFile").ifBlank {
+                                        first.optString("titleKindFile")
+                                    }.takeIf { it.isNotBlank() }
+                                )
+                            }
                         }
                     }
+                } finally {
+                    conn.disconnect()
                 }
-            } finally {
-                conn.disconnect()
-            }
-        }.onFailure { Log.w(TAG, "versions JSON failed; trying HTML", it) }
+            }.onFailure { Log.w(TAG, "versions JSON failed for $page; trying next", it) }
+        }
 
-        for (page in listOf(PAGE_JP, PAGE_EN, "$PAGE_EN/download", "$PAGE_JP/download")) {
+        for (page in pages) {
             val id = scrapeFileId(page)
             if (id != null) return Triple(id, null, null)
         }
-        error("Could not resolve latest Uptodown fileID for LINE")
+        error("Could not resolve latest Uptodown fileID (pages=${pages.size})")
     }
 
     private fun scrapeFileId(pageUrl: String): String? {

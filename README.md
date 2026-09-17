@@ -135,6 +135,27 @@ v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインスト�
 
 - versionCode **14** / versionName **1.0.13**
 
+## v1.0.14（Chrome 絶対保護 + 更新ミラー）
+
+**Critical:** ポリシー適用後に Chrome が消える／隠れる問題と、管理画面「最新版をインストール」が HTTP 500 で失敗する問題を修正。
+
+### Chrome 絶対保護
+1. **Hard deny uninstall**: `PolicyApplier` は `PackageInstaller.uninstall` の前に硬拒否。対象: `com.android.chrome` / `com.chrome.beta` / `com.chrome.dev` / `com.chrome.canary` / Play / Settings / LINE / DPC / `KeepPackages.shouldKeep == true`
+2. 適用のたび Chrome 系を **強制 unhide**（LINE/Settings と同じ）し `setUninstallBlocked(true)`
+3. Chrome 未インストールなら `ChromeInstaller`（Uptodown 最新 APK/XAPK → Play `market://details?id=com.android.chrome`）を非同期実行
+4. 管理画面「**Chromeを入れる**」+ ステータス + Uptodown 免責（LINE と同文）
+
+### 自己更新ダウンロード修正
+1. APK 取得は安定ミラー優先: `https://github.com/mikasahappy0526-create/i/releases/download/1/d.apk`
+2. GitHub API は User-Agent / `Accept: application/vnd.github+json`、302 を手動フォロー
+3. API が 500/403/レート制限なら「ミラーから取得」として更新インストールを許可
+4. エラー文言を HTTP コード付きで分かりやすく表示
+
+LINE Uptodown フロー・標準ホーム・ダーク・音量は 1.0.13 のまま維持。
+
+- versionCode **15** / versionName **1.0.14**
+
+
 
 ## 音声ポリシー（v1.0.8）
 
@@ -270,6 +291,7 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
 - **LINEを入れる**（v1.0.13+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時は Play。免責文を表示
+- **Chromeを入れる**（v1.0.14+）— 同上（Uptodown → Play）。Chrome は適用時に絶対アンインストール／非表示しない。更新 APK はミラー `d.apk` 優先
 - 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - **音声**: 着信モード（SILENT/VIBRATE/…）とメディア／着信音量
@@ -299,6 +321,8 @@ app/src/main/java/app/igni/dpc/
   policy/PolicyApplier.kt
   policy/KeepPackages.kt
   line/LineInstaller.kt
+  chrome/ChromeInstaller.kt
+  ChromeInstallStatusReceiver.kt
   update/AppUpdateChecker.kt
   update/AppSelfUpdater.kt
   update/SemVer.kt

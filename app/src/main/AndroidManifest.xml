@@ -159,5 +159,14 @@
                 <action android:name="app.igni.dpc.action.LINE_INSTALL_STATUS" />
             </intent-filter>
         </receiver>
+
+        <!-- PackageInstaller silent Chrome install status. -->
+        <receiver
+            android:name=".ChromeInstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.igni.dpc.action.CHROME_INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -16,6 +16,7 @@ import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
 import app.igni.dpc.UninstallStatusReceiver
+import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
 
 data class ApplyResult(
@@ -150,6 +151,13 @@ class PolicyApplier(context: Context) {
         }
 
         runCatching { dpm.setUninstallBlocked(admin, appContext.packageName, true) }
+        // Hard-block uninstall of Chrome / Play / Settings / LINE (defense in depth).
+        for (pkg in KeepPackages.HARD_DENY_UNINSTALL) {
+            runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
+        }
+        for (pkg in KeepPackages.CHROME_PACKAGES) {
+            runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
+        }
 
         val cameras = keep.detectCameraPackages()
         Log.i(TAG, "Camera keep/unhide set (${cameras.size}): ${cameras.sorted().joinToString()}")
@@ -177,8 +185,9 @@ class PolicyApplier(context: Context) {
         Log.i(TAG, "Camera unhide pass done: unhidden=$camerasUnhidden kept=${cameras.size}")
 
         // Chrome must stay usable: never leave it hidden; drop from HiddenStore.
-        unhideKeepPackage(KeepPackages.CHROME_PACKAGE, hidden, "Chrome")
-        unhideKeepPackage(KeepPackages.CHROME_BETA_PACKAGE, hidden, "Chrome beta")
+        for (chromePkg in KeepPackages.CHROME_PACKAGES) {
+            unhideKeepPackage(chromePkg, hidden, "Chrome")
+        }
         unhideKeepPackage(KeepPackages.LINE_PACKAGE, hidden, "LINE")
         for (settingsPkg in KeepPackages.SETTINGS_PACKAGES) {
             unhideKeepPackage(settingsPkg, hidden, "Settings")
@@ -202,10 +211,12 @@ class PolicyApplier(context: Context) {
         var newlyHidden = 0
         var uninstallRequested = 0
         for (pkg in installed) {
+            // Hard deny + shouldKeep: never uninstall or hide these.
+            if (keep.isHardDenyUninstall(pkg)) continue
             if (keep.shouldKeep(pkg)) continue
-            // Hard guard: never touch this DPC.
             if (pkg == appContext.packageName) continue
             if (pkg in cameras) continue
+            if (pkg in KeepPackages.CHROME_PACKAGES) continue
 
             if (isSystemOrUpdatedSystemApp(pkg)) {
                 // System bloat: hide only (never uninstall). Same launchable scope as prior releases.
@@ -273,8 +284,9 @@ class PolicyApplier(context: Context) {
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume}"
         )
-        // Post-setup: if LINE missing, try silent APK then Play Store (async; do not block apply).
+        // Post-setup: if LINE / Chrome missing, try silent install then Play (async; do not block apply).
         LineInstaller.ensureLineInstalledAsync(appContext)
+        ChromeInstaller.ensureChromeInstalledAsync(appContext)
         return ApplyResult(
             success = true,
             hiddenCount = hidden.size,
@@ -311,6 +323,16 @@ class PolicyApplier(context: Context) {
      * Returns true if the uninstall request was submitted (not that it already finished).
      */
     private fun requestSilentUninstall(packageName: String): Boolean {
+        // Absolute hard deny — never call PackageInstaller.uninstall for these.
+        if (keep.isHardDenyUninstall(packageName)) {
+            Log.w(TAG, "Hard-deny uninstall skipped for $packageName")
+            return false
+        }
+        if (packageName in KeepPackages.CHROME_PACKAGES) {
+            Log.w(TAG, "Chrome-family uninstall skipped for $packageName")
+            return false
+        }
+
         runCatching { dpm.setUninstallBlocked(admin, packageName, false) }
 
         return runCatching {
