@@ -8,13 +8,21 @@ import androidx.core.view.isVisible
 import app.igni.dpc.databinding.ActivityAdminBinding
 import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.PolicyApplier
+import app.igni.dpc.update.AppSelfUpdater
+import app.igni.dpc.update.AppUpdateChecker
+import app.igni.dpc.update.CheckResult
+import app.igni.dpc.update.LatestRelease
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AdminActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityAdminBinding
     private val executor = Executors.newSingleThreadExecutor()
+    private val updateBusy = AtomicBoolean(false)
+    private var pendingRelease: LatestRelease? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,9 +31,20 @@ class AdminActivity : AppCompatActivity() {
 
         binding.toolbar.title = getString(R.string.app_name)
         binding.allowlist.text = PolicyApplier(this).allowlistForDisplay().joinToString("\n")
+        binding.currentVersion.text = getString(
+            R.string.current_version,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE
+        )
+        binding.btnInstallUpdate.isEnabled = false
+        binding.updateStatus.text = getString(R.string.update_status_idle)
 
         binding.btnReapply.setOnClickListener { reapply() }
         binding.btnUnhide.setOnClickListener { confirmUnhide() }
+        binding.btnCheckUpdate.setOnClickListener { checkUpdate() }
+        binding.btnInstallUpdate.setOnClickListener { installUpdate() }
+
+        maybeReapplyAfterVersionChange()
 
         val applier = PolicyApplier(this)
         if (applier.isDeviceOwner() && !applier.hasApplied()) {
@@ -43,6 +62,30 @@ class AdminActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         executor.shutdownNow()
+    }
+
+    /**
+     * After self-update, optionally re-apply policy once when versionCode changes
+     * (BootReceiver also re-applies on MY_PACKAGE_REPLACED).
+     */
+    private fun maybeReapplyAfterVersionChange() {
+        val prefs = getSharedPreferences(PREFS_UPDATE, MODE_PRIVATE)
+        val last = prefs.getInt(KEY_LAST_APPLIED_VERSION, -1)
+        val current = BuildConfig.VERSION_CODE
+        if (last == current) return
+        prefs.edit().putInt(KEY_LAST_APPLIED_VERSION, current).apply()
+        if (last < 0) return // first install / fresh prefs — PolicyApplier.hasApplied handles apply
+        val applier = PolicyApplier(this)
+        if (!applier.isDeviceOwner()) return
+        executor.execute {
+            LogI("Version changed $last -> $current; re-applying policy")
+            applier.apply()
+            runOnUiThread { refresh() }
+        }
+    }
+
+    private fun LogI(msg: String) {
+        android.util.Log.i("IgniAdmin", msg)
     }
 
     private fun refresh() {
@@ -67,8 +110,11 @@ class AdminActivity : AppCompatActivity() {
         updateDarkModeLabel(applier.darkModeStatus())
         binding.allowlist.text = applier.allowlistForDisplay().joinToString("\n")
         binding.lockTaskNote.isVisible = BuildConfig.ENABLE_LOCK_TASK
-        binding.btnReapply.isEnabled = isOwner
-        binding.btnUnhide.isEnabled = isOwner
+        val busy = binding.progress.isVisible
+        binding.btnReapply.isEnabled = isOwner && !busy
+        binding.btnUnhide.isEnabled = isOwner && !busy
+        binding.btnCheckUpdate.isEnabled = !updateBusy.get()
+        binding.btnInstallUpdate.isEnabled = !updateBusy.get() && pendingRelease != null
     }
 
     private fun updateTimeoutLabel(timeoutMs: Int?) {
@@ -120,6 +166,10 @@ class AdminActivity : AppCompatActivity() {
             val result = PolicyApplier(this).apply()
             runOnUiThread {
                 setBusy(false)
+                getSharedPreferences(PREFS_UPDATE, MODE_PRIVATE)
+                    .edit()
+                    .putInt(KEY_LAST_APPLIED_VERSION, BuildConfig.VERSION_CODE)
+                    .apply()
                 refresh()
                 if (result.screenTimeoutMs != null) {
                     updateTimeoutLabel(result.screenTimeoutMs)
@@ -166,10 +216,109 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+    private fun checkUpdate() {
+        if (!updateBusy.compareAndSet(false, true)) return
+        pendingRelease = null
+        binding.btnInstallUpdate.isEnabled = false
+        binding.btnCheckUpdate.isEnabled = false
+        binding.updateStatus.text = getString(R.string.update_status_checking)
+        executor.execute {
+            val result = AppUpdateChecker.checkForUpdate(BuildConfig.VERSION_NAME)
+            runOnUiThread {
+                updateBusy.set(false)
+                binding.btnCheckUpdate.isEnabled = true
+                when (result) {
+                    is CheckResult.UpToDate -> {
+                        pendingRelease = null
+                        binding.btnInstallUpdate.isEnabled = false
+                        binding.updateStatus.text = getString(
+                            R.string.update_status_uptodate,
+                            result.latest
+                        )
+                    }
+                    is CheckResult.UpdateAvailable -> {
+                        pendingRelease = result.release
+                        binding.btnInstallUpdate.isEnabled = true
+                        binding.updateStatus.text = getString(
+                            R.string.update_status_available,
+                            result.release.tagName
+                        )
+                        Toast.makeText(
+                            this,
+                            getString(R.string.toast_update_available, result.release.tagName),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    is CheckResult.Error -> {
+                        pendingRelease = null
+                        binding.btnInstallUpdate.isEnabled = false
+                        binding.updateStatus.text = getString(
+                            R.string.update_status_error,
+                            result.message
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun installUpdate() {
+        val release = pendingRelease ?: return
+        if (!updateBusy.compareAndSet(false, true)) return
+        binding.btnCheckUpdate.isEnabled = false
+        binding.btnInstallUpdate.isEnabled = false
+        binding.updateStatus.text = getString(R.string.update_status_downloading)
+        executor.execute {
+            val dest = File(cacheDir, "igni-dpc-update.apk")
+            val downloaded = AppUpdateChecker.downloadApk(release.apkDownloadUrl, dest)
+            if (downloaded.isFailure) {
+                runOnUiThread {
+                    updateBusy.set(false)
+                    binding.btnCheckUpdate.isEnabled = true
+                    binding.btnInstallUpdate.isEnabled = pendingRelease != null
+                    binding.updateStatus.text = getString(
+                        R.string.update_status_error,
+                        downloaded.exceptionOrNull()?.message ?: "download"
+                    )
+                }
+                return@execute
+            }
+            runOnUiThread {
+                binding.updateStatus.text = getString(R.string.update_status_installing)
+            }
+            val installed = AppSelfUpdater.installApk(this, dest)
+            runOnUiThread {
+                if (installed.isSuccess) {
+                    binding.updateStatus.text = getString(R.string.update_status_installing)
+                    Toast.makeText(this, R.string.toast_update_installing, Toast.LENGTH_LONG).show()
+                    // Keep busy until process is replaced; allow re-check if install fails silently.
+                    binding.btnCheckUpdate.isEnabled = true
+                    updateBusy.set(false)
+                } else {
+                    updateBusy.set(false)
+                    binding.btnCheckUpdate.isEnabled = true
+                    binding.btnInstallUpdate.isEnabled = pendingRelease != null
+                    binding.updateStatus.text = getString(
+                        R.string.update_status_error,
+                        installed.exceptionOrNull()?.message ?: "install"
+                    )
+                }
+            }
+        }
+    }
+
     private fun setBusy(busy: Boolean) {
         binding.progress.isVisible = busy
         val owner = PolicyApplier(this).isDeviceOwner()
         binding.btnReapply.isEnabled = owner && !busy
         binding.btnUnhide.isEnabled = owner && !busy
+        binding.btnCheckUpdate.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallUpdate.isEnabled =
+            !busy && !updateBusy.get() && pendingRelease != null
+    }
+
+    companion object {
+        private const val PREFS_UPDATE = "igni_update"
+        private const val KEY_LAST_APPLIED_VERSION = "lastAppliedVersionCode"
     }
 }

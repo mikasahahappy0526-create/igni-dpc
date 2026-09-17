@@ -90,6 +90,64 @@
             app:strokeColor="@color/igni_outline" />
 
         <TextView
+            android:id="@+id/currentVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="20dp"
+            android:textColor="@color/igni_text"
+            android:textSize="14sp"
+            tools:text="現在のバージョン: 1.0.7 (8)" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCheckUpdate"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="10dp"
+            android:text="@string/btn_check_update"
+            android:textColor="@color/igni_text"
+            android:textSize="16sp"
+            app:cornerRadius="14dp"
+            app:strokeColor="@color/igni_outline" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnInstallUpdate"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="10dp"
+            android:enabled="false"
+            android:text="@string/btn_install_update"
+            android:textColor="@color/igni_text"
+            android:textSize="16sp"
+            app:cornerRadius="14dp"
+            app:strokeColor="@color/igni_outline" />
+
+        <TextView
+            android:id="@+id/updateStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/update_status_idle"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/update_note"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp" />
+
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"

@@ -203,9 +203,18 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - Device Owner の有効 / 無効
 - **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（ドック Home 再設定・ダーク強化・タイムアウト再設定含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
+- **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
+- 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - **ダークモード**: SDK バージョン、API 有無、直近の適用結果
 - 許可リストの表示
+
+### アプリ内更新（v1.0.7）
+
+1. 管理画面で「更新を確認」→ `https://api.github.com/repos/mikasahahappy0526-create/igni-dpc/releases/latest`
+2. タグ（例 `v1.0.7`）を SemVer 比較し、新しい場合は「最新版をインストール」を有効化
+3. `igni-dpc.apk` を HTTPS でキャッシュへダウンロードし、`PackageInstaller` セッション（`MODE_FULL_INSTALL`）で自己インストール
+4. 更新後は `MY_PACKAGE_REPLACED` / バージョン変更検知でポリシーを再適用（必要なら「ポリシーを再適用」でも可）
 
 ## プロジェクト構成
 
@@ -218,6 +227,10 @@ app/src/main/java/app/igni/dpc/
   PolicyComplianceActivity.kt
   HomeActivity.kt
   AdminActivity.kt
+  InstallStatusReceiver.kt
   policy/PolicyApplier.kt
   policy/KeepPackages.kt
+  update/AppUpdateChecker.kt
+  update/AppSelfUpdater.kt
+  update/SemVer.kt
 ```
