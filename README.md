@@ -1,6 +1,6 @@
 # イグニ DPC（Device Policy Controller）
 
-完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、ホームから起動できるアプリを **設定** と **Play ストア** に絞ります。それ以外の起動可能なアプリは、安全に隠せるものだけ `DevicePolicyManager.setApplicationHidden` で非表示にします（アンインストールはしません）。
+完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、専用ホームに **設定**・**Play ストア**・**カメラ**・**Chrome** を並べ、それ以外は隠します。それ以外の起動可能なアプリは、安全に隠せるものだけ `DevicePolicyManager.setApplicationHidden` で非表示にします（アンインストールはしません）。
 
 - パッケージ名: `app.igni.dpc`
 - アプリ名: `イグニ`
@@ -11,17 +11,27 @@
 
 プロビジョニング完了時（`GET_PROVISIONING_MODE` → 完全管理端末、続けて `ADMIN_POLICY_COMPLIANCE`）、Device Owner 有効化時、起動完了時に、同じポリシーを冪等に適用します。ユーザー操作は不要です。
 
-**許可リスト（ランチャーに残す）**
+**許可リスト（専用ホームのタイル）**
 
-- `com.android.settings`（設定）
+- `com.android.settings`（設定）および OEM Settings パッケージ
 - `com.android.vending`（Play ストア）
-- この DPC 自身（再適用・復旧用）
+- カメラ（`com.android.camera2` / `com.android.camera` / `com.google.android.GoogleCamera` および一般的な OEM カメラ）
+- `com.android.chrome`（Chrome；安定版が無い場合のみ beta）
+- この DPC 自身（管理画面・再適用用）
 
 **隠さない安全リスト（例）**
 
 SystemUI、PackageInstaller、PermissionController、Google Play 開発者サービス、セットアップウィザード、Managed Provisioning、デフォルトランチャー、IME（キーボード）、WebView など。これらを隠すと端末が操作不能になるため、起動アイコンがあっても隠しません。
 
-Lock Task（キオスク）は **デフォルトオフ** です。隠すだけで「ホームに設定と Play だけ」になります。有効にする場合は `app/build.gradle.kts` の `ENABLE_LOCK_TASK` を `true` にしてください。
+Lock Task（キオスク）は **デフォルトオフ** です。有効にする場合は `app/build.gradle.kts` の `ENABLE_LOCK_TASK` を `true` にしてください。
+
+## 専用ホーム（v1.0.1+）
+
+OEM ランチャーに Settings が出ない端末向けに、`HomeActivity` を **デフォルト HOME** にします（`DevicePolicyManager.addPersistentPreferredActivity`）。
+
+- 1 画面・ページなしの 2×2 グリッド: **設定** / **Playストア** / **カメラ** / **Chrome**
+- コンポーネント: `app.igni.dpc/.HomeActivity`
+- 管理画面はホーム右下の小さな「管理」から開く（`AdminActivity` の LAUNCHER フィルタは外してある）
 
 ## リリース APK のビルド
 
@@ -140,7 +150,7 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 
 ## 管理画面
 
-アプリ「イグニ」を開くと:
+専用ホーム右下の「管理」から開くと:
 
 - Device Owner の有効 / 無効
 - **ポリシーを再適用** — 起動可能アプリを再スキャンして隠す
@@ -156,6 +166,7 @@ app/src/main/java/app/igni/dpc/
   AdminReceiver.kt
   GetProvisioningModeActivity.kt
   PolicyComplianceActivity.kt
+  HomeActivity.kt
   AdminActivity.kt
   policy/PolicyApplier.kt
   policy/KeepPackages.kt

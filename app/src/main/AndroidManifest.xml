@@ -34,15 +34,25 @@
         android:theme="@style/Theme.Igni"
         tools:targetApi="35">
 
+        <!-- Dedicated home: Settings / Play Store / Camera / Chrome tiles. -->
+        <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:stateNotNeeded="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Admin tools: no LAUNCHER icon; open from Home 「管理」 link. -->
         <activity
             android:name=".AdminActivity"
             android:exported="true"
-            android:launchMode="singleTop">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:launchMode="singleTop" />
 
         <!-- Android 10+ QR / zero-touch: choose fully managed device. -->
         <activity

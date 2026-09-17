@@ -59,13 +59,51 @@ class KeepPackages(private val context: Context) {
         private const val MATCH_FLAGS =
             PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
 
-        /** User-facing apps that must stay launchable from the home screen. */
-        val PRODUCT_ALLOWLIST: Set<String> = linkedSetOf(
+        const val PLAY_STORE_PACKAGE = "com.android.vending"
+        const val CHROME_PACKAGE = "com.android.chrome"
+        const val CHROME_BETA_PACKAGE = "com.chrome.beta"
+
+        val SETTINGS_PACKAGES: List<String> = listOf(
             "com.android.settings",
-            "com.android.vending",
-            // OEM Settings packages seen on some devices
             "com.samsung.android.settings",
             "com.google.android.settings",
+        )
+
+        val CAMERA_PACKAGES: List<String> = listOf(
+            "com.android.camera2",
+            "com.android.camera",
+            "com.google.android.GoogleCamera",
+            "com.sec.android.app.camera",
+            "com.mediatek.camera",
+            "com.huawei.camera",
+            "com.oplus.camera",
+            "com.oneplus.camera",
+            "com.motorola.camera2",
+            "org.codeaurora.snapcam",
+        )
+
+        /** User-facing apps that must stay launchable from the dedicated home. */
+        val PRODUCT_ALLOWLIST: Set<String> = linkedSetOf(
+            // Settings (+ OEM variants)
+            "com.android.settings",
+            "com.samsung.android.settings",
+            "com.google.android.settings",
+            // Play Store
+            PLAY_STORE_PACKAGE,
+            // Camera (+ common OEM packages)
+            "com.android.camera2",
+            "com.android.camera",
+            "com.google.android.GoogleCamera",
+            "com.sec.android.app.camera",
+            "com.mediatek.camera",
+            "com.huawei.camera",
+            "com.oplus.camera",
+            "com.oneplus.camera",
+            "com.motorola.camera2",
+            "org.codeaurora.snapcam",
+            // Chrome (stable; beta only if used as fallback launch target — keep installed)
+            CHROME_PACKAGE,
+            CHROME_BETA_PACKAGE,
         )
 
         /**

@@ -2,11 +2,14 @@ package app.igni.dpc.policy
 
 import android.app.admin.DevicePolicyManager
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
+import app.igni.dpc.HomeActivity
 
 data class ApplyResult(
     val success: Boolean,
@@ -78,11 +81,20 @@ class PolicyApplier(context: Context) {
                     arrayOf(
                         "com.android.settings",
                         "com.android.vending",
+                        "com.android.chrome",
+                        "com.android.camera2",
+                        "com.android.camera",
+                        "com.google.android.GoogleCamera",
                         appContext.packageName
                     )
                 )
             }.onFailure { Log.w(TAG, "setLockTaskPackages failed", it) }
         }
+
+
+        // Make HomeActivity the default HOME so Settings/Play/Camera/Chrome tiles show
+        // without relying on the OEM launcher layout (which often omits Settings).
+        setDedicatedHomePreferred()
 
         store.replace(hidden)
         store.markApplied()
@@ -114,6 +126,39 @@ class PolicyApplier(context: Context) {
     private fun installedPackageNames(): Set<String> {
         val apps = appContext.packageManager.getInstalledApplications(MATCH_FLAGS)
         return apps.map { it.packageName }.toSet()
+    }
+
+
+    private fun setDedicatedHomePreferred() {
+        val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        val homeComponent = ComponentName(appContext, HomeActivity::class.java)
+
+        // Best-effort: clear prior preferred HOME activities for known OEM launchers.
+        val launcherPkgs = listOf(
+            "com.android.launcher",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher",
+            "com.sec.android.app.launcher",
+            "com.huawei.android.launcher",
+            "com.miui.home",
+            "com.oppo.launcher",
+            "com.android.systemui", // some devices bind HOME oddly
+            appContext.packageName,
+        )
+        for (pkg in launcherPkgs) {
+            runCatching { dpm.clearPackagePersistentPreferredActivities(admin, pkg) }
+                .onFailure { Log.w(TAG, "clearPackagePersistentPreferredActivities($pkg) failed", it) }
+        }
+
+        runCatching {
+            dpm.addPersistentPreferredActivity(admin, homeFilter, homeComponent)
+            Log.i(TAG, "Preferred HOME set to $homeComponent")
+        }.onFailure {
+            Log.w(TAG, "addPersistentPreferredActivity failed", it)
+        }
     }
 
     companion object {
