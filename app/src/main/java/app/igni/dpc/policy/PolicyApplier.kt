@@ -62,7 +62,7 @@ data class DarkModeStatus(
  * - Hide **system** apps that are not kept (cannot safely uninstall).
  * - Never claim HOME: clear this package's persistent preferred activities every apply
  *   so the stock Samsung / OEM launcher remains home (Igni HomeActivity is disabled).
- * - Keep Chrome / Settings / Play / Camera visible (explicit unhide).
+ * - Keep Chrome / Settings / Play / Camera / LINE visible (explicit unhide).
  * - Apply display defaults: Samsung Settings-reflecting dark theme + 30-minute timeout.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  *
@@ -178,6 +178,7 @@ class PolicyApplier(context: Context) {
         // Chrome must stay usable: never leave it hidden; drop from HiddenStore.
         unhideKeepPackage(KeepPackages.CHROME_PACKAGE, hidden, "Chrome")
         unhideKeepPackage(KeepPackages.CHROME_BETA_PACKAGE, hidden, "Chrome beta")
+        unhideKeepPackage(KeepPackages.LINE_PACKAGE, hidden, "LINE")
         for (settingsPkg in KeepPackages.SETTINGS_PACKAGES) {
             unhideKeepPackage(settingsPkg, hidden, "Settings")
         }
@@ -242,6 +243,7 @@ class PolicyApplier(context: Context) {
                 "com.android.settings",
                 "com.android.vending",
                 "com.android.chrome",
+                KeepPackages.LINE_PACKAGE,
                 appContext.packageName
             )
             lockTaskPkgs.addAll(cameras)

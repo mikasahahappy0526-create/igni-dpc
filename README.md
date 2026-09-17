@@ -1,6 +1,6 @@
 # イグニ DPC（Device Policy Controller）
 
-完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**端末標準ホーム（Samsung One UI 等）**のまま、許可リスト外について次を適用します。設定・Play・Chrome・カメラは表示を維持します。
+完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**端末標準ホーム（Samsung One UI 等）**のまま、許可リスト外について次を適用します。設定・Play・Chrome・LINE・カメラは表示を維持します。
 
 - **ユーザーアプリ**（非システム）: Device Owner として `PackageInstaller.uninstall` で**サイレントアンインストール**（容量を解放）
 - **システムアプリ**: アンインストールせず `DevicePolicyManager.setApplicationHidden(true)` で**非表示のみ**
@@ -20,6 +20,7 @@
 - `com.android.vending`（Play ストア）
 - カメラ（静的 OEM リスト + **動的検出**: `IMAGE_CAPTURE` / `STILL_IMAGE_CAMERA` / `VIDEO_CAMERA` ハンドラ、および packageName に `camera` を含む MAIN/LAUNCHER アプリ。適用時に必ず unhide）
 - `com.android.chrome`（Chrome；安定版が無い場合のみ beta）
+- `jp.naver.line.android`（LINE）
 - この DPC 自身（`AdminActivity` が LAUNCHER のみ。`HomeActivity` は無効・HOME にしない）
 - SystemUI、IME など端末動作に必要なパッケージ
 
@@ -29,15 +30,16 @@ SystemUI、PackageInstaller、PermissionController、Google Play 開発者サー
 
 Lock Task（キオスク）は **デフォルトオフ** です。有効にする場合は `app/build.gradle.kts` の `ENABLE_LOCK_TASK` を `true` にしてください。
 
-## ホーム画面（v1.0.10: 標準ランチャー）
+## ホーム画面（v1.0.11: 標準ランチャー）
 
 **Igni を HOME にしない**（Galaxy A23 等でドック／管理ホームに固定されて Chrome が使えなくなる問題の修正）。
 
 - マニフェスト: `HomeActivity` は **無効**（`enabled=false`、HOME/DEFAULT フィルタなし）
 - `AdminActivity` のみ `MAIN` + `LAUNCHER`（管理・再適用・更新用）
 - `PolicyApplier.apply()` のたび: `clearPackagePersistentPreferredActivities(admin, packageName)` のみ。**`addPersistentPreferredActivity` は呼ばない**
-- ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・カメラがランチャーに残る
+- ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・LINE・カメラがランチャーに残る
 - Chrome: 適用時に明示 unhide。lock-task 既定オフ。カスタムホームによるブラウザ intent 横取りなし
+- LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。Play ストアからインストール後も再適用で保持
 
 ## カメラ保護（v1.0.4）
 
@@ -101,6 +103,12 @@ v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインスト�
 - **Chrome 利用可**: `com.android.chrome` を必ず unhide / 非アンインストール。lock-task なし
 - **ダーク（Settings 反映）**: 優先で `Settings.System.display_night_theme=1` を書き込み、読み戻しが 1 であることを管理画面に表示。併せて UiModeManager / `ui_night_mode=2` / DPM 反射設定
 - versionCode **11** / versionName **1.0.10**
+
+## v1.0.11（LINE 保持）
+
+- **LINE 利用可**: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。Play ストアからインストールした LINE は再適用後も保持
+- **標準ホーム維持**: Igni HOME は使わず、ドック変更なし
+- versionCode **12** / versionName **1.0.11**
 
 ## 音声ポリシー（v1.0.8）
 

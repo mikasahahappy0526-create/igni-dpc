@@ -11,7 +11,7 @@ import android.view.inputmethod.InputMethodManager
 /**
  * Packages that must remain installed (and visible when launchable) for a usable dedicated terminal.
  *
- * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome.
+ * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome + LINE.
  * Critical keep-list: System UI, provisioning, keyboards, default launcher, Play services, DPC, etc.
  *
  * Camera packages are detected dynamically (image-capture intent handlers, launcher apps
@@ -129,6 +129,7 @@ class KeepPackages(private val context: Context) {
         const val PLAY_STORE_PACKAGE = "com.android.vending"
         const val CHROME_PACKAGE = "com.android.chrome"
         const val CHROME_BETA_PACKAGE = "com.chrome.beta"
+        const val LINE_PACKAGE = "jp.naver.line.android"
 
         val SETTINGS_PACKAGES: List<String> = listOf(
             "com.android.settings",
@@ -238,6 +239,8 @@ class KeepPackages(private val context: Context) {
             // Chrome (stable; beta only if used as fallback launch target — keep installed)
             CHROME_PACKAGE,
             CHROME_BETA_PACKAGE,
+            // LINE
+            LINE_PACKAGE,
         )
 
         /**
