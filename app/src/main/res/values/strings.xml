@@ -2,8 +2,8 @@
     <string name="app_name">イグニ</string>
     <string name="device_admin_description">イグニの端末管理者。許可リスト外のユーザーアプリをアンインストールし、システムの不要アプリは非表示にします。端末標準のホーム画面を使います。</string>
     <string name="status_label">Device Owner 状態</string>
-    <string name="status_device_owner">有効（完全管理端末）</string>
-    <string name="status_not_device_owner">無効</string>
+    <string name="status_device_owner">はい</string>
+    <string name="status_not_device_owner">いいえ</string>
     <string name="hint_owner">この端末はイグニの Device Owner です。ホームは端末標準（Samsung One UI など）のままです。許可リスト外のユーザーアプリはアンインストール（容量解放）、システムアプリの不要なものは非表示にします。設定・Play・Chrome・LINE・カメラは表示を維持。システムUI・キーボードなど端末動作に必要なパッケージは対象外です。</string>
     <string name="hint_not_owner">Device Owner ではありません。工場出荷状態にリセットしたうえで、セットアップ画面でQRコードを読み取り、このアプリを端末管理者としてプロビジョニングしてください。</string>
     <string name="btn_reapply">ポリシーを再適用</string>
@@ -65,4 +65,17 @@
     <string name="toast_chrome_install_started">Chrome インストールを開始しました</string>
     <string name="chrome_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
     <string name="update_status_mirror">更新: ミラーから取得（%1$s）</string>
+
+    <string name="btn_return_personal">個人用に戻す（Device Owner解除）</string>
+    <string name="return_personal_note">「個人用に戻す」は Device Owner を解除し、イグニを通常アプリにします。非表示にしたシステムアプリは再表示されますが、アンインストール済みのユーザーアプリは戻りません。ポリシー（非表示・アンインストール・ダーク／音量等）は以降適用されません。</string>
+    <string name="return_personal_confirm_title">個人用に戻しますか？</string>
+    <string name="return_personal_confirm_message">Device Owner（完全管理）を解除します。\n\n・非表示にしたシステムアプリは再表示されます\n・すでにアンインストールしたアプリは戻りません（Play等から再インストールが必要）\n・イグニは通常のアプリになり、ポリシーは以降適用されません\n\nこの操作は取り消せません。よろしいですか？</string>
+    <string name="return_personal_confirm_ok">解除する</string>
+    <string name="return_personal_confirm_cancel">キャンセル</string>
+    <string name="toast_return_personal_success">Device Owner を解除しました（非表示 %d 件を再表示）。イグニは通常アプリです。</string>
+    <string name="toast_return_personal_not_owner">Device Owner ではないため解除できません</string>
+    <string name="toast_return_personal_failed">Device Owner の解除に失敗しました: %1$s</string>
+    <string name="return_personal_status_success">個人用に戻す: 成功（Device Owner = いいえ）</string>
+    <string name="return_personal_status_failed">個人用に戻す: 失敗 — %1$s</string>
+    <string name="return_personal_status_not_owner">個人用に戻す: Device Owner ではありません</string>
 </resources>

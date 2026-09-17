@@ -44,6 +44,7 @@ class AdminActivity : AppCompatActivity() {
 
         binding.btnReapply.setOnClickListener { reapply() }
         binding.btnUnhide.setOnClickListener { confirmUnhide() }
+        binding.btnReturnPersonal.setOnClickListener { confirmReturnPersonal() }
         binding.btnCheckUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallUpdate.setOnClickListener { installUpdate() }
         binding.btnInstallLine.setOnClickListener { installLine() }
@@ -119,6 +120,7 @@ class AdminActivity : AppCompatActivity() {
         val busy = binding.progress.isVisible
         binding.btnReapply.isEnabled = isOwner && !busy
         binding.btnUnhide.isEnabled = isOwner && !busy
+        binding.btnReturnPersonal.isEnabled = isOwner && !busy
         binding.btnCheckUpdate.isEnabled = !updateBusy.get()
         binding.btnInstallUpdate.isEnabled = !updateBusy.get() && pendingRelease != null
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
@@ -371,11 +373,66 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun confirmReturnPersonal() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.return_personal_confirm_title)
+            .setMessage(R.string.return_personal_confirm_message)
+            .setPositiveButton(R.string.return_personal_confirm_ok) { _, _ -> returnToPersonal() }
+            .setNegativeButton(R.string.return_personal_confirm_cancel, null)
+            .show()
+    }
+
+    private fun returnToPersonal() {
+        setBusy(true)
+        binding.returnPersonalStatus.isVisible = true
+        binding.returnPersonalStatus.text = "個人用に戻す: 処理中…"
+        executor.execute {
+            val result = PolicyApplier(this).returnToPersonalUse()
+            runOnUiThread {
+                setBusy(false)
+                refresh()
+                when {
+                    result.message == "not_device_owner" -> {
+                        binding.returnPersonalStatus.text =
+                            getString(R.string.return_personal_status_not_owner)
+                        Toast.makeText(
+                            this,
+                            R.string.toast_return_personal_not_owner,
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    result.success -> {
+                        binding.returnPersonalStatus.text =
+                            getString(R.string.return_personal_status_success)
+                        Toast.makeText(
+                            this,
+                            getString(R.string.toast_return_personal_success, result.restoredHidden),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    else -> {
+                        binding.returnPersonalStatus.text = getString(
+                            R.string.return_personal_status_failed,
+                            result.message
+                        )
+                        Toast.makeText(
+                            this,
+                            getString(R.string.toast_return_personal_failed, result.message),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
     private fun setBusy(busy: Boolean) {
         binding.progress.isVisible = busy
         val owner = PolicyApplier(this).isDeviceOwner()
         binding.btnReapply.isEnabled = owner && !busy
         binding.btnUnhide.isEnabled = owner && !busy
+        binding.btnReturnPersonal.isEnabled = owner && !busy
         binding.btnCheckUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallUpdate.isEnabled =
             !busy && !updateBusy.get() && pendingRelease != null

@@ -155,6 +155,20 @@ LINE Uptodown フロー・標準ホーム・ダーク・音量は 1.0.13 のま�
 
 - versionCode **15** / versionName **1.0.14**
 
+## v1.0.16（個人用に戻す / Device Owner 解除）
+
+管理画面に危険操作ボタン **「個人用に戻す（Device Owner解除）」** を追加。確認ダイアログのうえ Device Owner を自己解除します。
+
+1. 非表示にしたシステムアプリを `PolicyApplier.unhideAll()` で再表示
+2. `clearPackagePersistentPreferredActivities` / lock-task クリア / 自パッケージの uninstall-blocked 解除
+3. `DevicePolicyManager.clearDeviceOwnerApp(packageName)`（deprecated だが DO 自己解除 API）
+4. 成功後、管理画面の Device Owner 状態は **いいえ**。イグニは通常アプリになり、以降ポリシーは適用されない
+5. アンインストール済みユーザーアプリは復元不可（従来どおり）
+
+Chrome / LINE / 更新 / 標準ホーム / ダーク / 音量ポリシーは変更なし。
+
+- versionCode **17** / versionName **1.0.16**
+
 ## v1.0.15（Chrome Play-first + hidden 判定修正）
 
 **Critical:** v1.0.14 でも「ポリシーを再適用」後に Chrome が無く、Play が開かない端末があった問題を修正。
@@ -299,9 +313,10 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 
 ランチャーの「イグニ」アイコン（`AdminActivity`）から開くと:
 
-- Device Owner の有効 / 無効
+- Device Owner の **はい / いいえ**
 - **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（Igni HOME 解除・Chrome unhide・ダーク強化・タイムアウト再設定・マナー／音量0 含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
+- **個人用に戻す（Device Owner解除）**（v1.0.16）— 確認後に非表示アプリを再表示し Device Owner を解除。イグニは通常アプリになる。アンインストール済みアプリは戻らない
 - **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
 - **LINEを入れる**（v1.0.13+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時は Play。免責文を表示
 - **Chromeを入れる**（v1.0.15+）— Play を先に開き、続けて Uptodown サイレント。Chrome は適用時に絶対アンインストール／非表示しない。更新 APK はミラー `d.apk` 優先

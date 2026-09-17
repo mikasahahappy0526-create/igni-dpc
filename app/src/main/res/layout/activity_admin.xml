@@ -89,6 +89,30 @@
             app:cornerRadius="14dp"
             app:strokeColor="@color/igni_outline" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnReturnPersonal"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="10dp"
+            android:text="@string/btn_return_personal"
+            android:textColor="@color/igni_text"
+            android:textSize="16sp"
+            app:backgroundTint="@color/igni_bad"
+            app:cornerRadius="14dp" />
+
+        <TextView
+            android:id="@+id/returnPersonalStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:text=""
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/currentVersion"
             android:layout_width="match_parent"
@@ -257,6 +281,16 @@
             android:lineSpacingExtra="3dp"
             android:text="@string/unhide_note"
             android:textColor="@color/igni_muted"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/return_personal_note"
+            android:textColor="@color/igni_bad"
             android:textSize="13sp" />
 
         <ProgressBar

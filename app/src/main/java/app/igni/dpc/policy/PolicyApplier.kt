@@ -32,6 +32,15 @@ data class ApplyResult(
 )
 
 /**
+ * Result of returning the device to personal use (clear Device Owner).
+ */
+data class ClearOwnerResult(
+    val success: Boolean,
+    val restoredHidden: Int = 0,
+    val message: String
+)
+
+/**
  * Result of audio / manner (silent) policy for Admin UI and logs.
  * [result]: success | fail | never
  */
@@ -316,6 +325,72 @@ class PolicyApplier(context: Context) {
         store.replace(emptySet())
         Log.i(TAG, "Unhid $restored / ${hidden.size} packages")
         return restored
+    }
+
+    /**
+     * Return to personal use: restore hidden system apps, clear DO-only policies,
+     * then [DevicePolicyManager.clearDeviceOwnerApp] (deprecated self-clear API).
+     * Must run while still Device Owner for unhide / clear calls to succeed.
+     */
+    @Suppress("DEPRECATION")
+    fun returnToPersonalUse(): ClearOwnerResult {
+        if (!isDeviceOwner()) {
+            Log.w(TAG, "returnToPersonalUse: not device owner")
+            return ClearOwnerResult(
+                success = false,
+                message = "not_device_owner"
+            )
+        }
+
+        val restored = unhideAll()
+
+        runCatching {
+            dpm.clearPackagePersistentPreferredActivities(admin, appContext.packageName)
+            Log.i(TAG, "Cleared persistent preferred activities before DO clear")
+        }.onFailure {
+            Log.w(TAG, "clearPackagePersistentPreferredActivities failed", it)
+        }
+
+        runCatching {
+            dpm.setLockTaskPackages(admin, emptyArray())
+            Log.i(TAG, "Cleared lock-task packages")
+        }.onFailure {
+            Log.w(TAG, "setLockTaskPackages(empty) failed", it)
+        }
+
+        runCatching {
+            dpm.setUninstallBlocked(admin, appContext.packageName, false)
+            Log.i(TAG, "Cleared uninstall-blocked on ${appContext.packageName}")
+        }.onFailure {
+            Log.w(TAG, "setUninstallBlocked(false) failed", it)
+        }
+
+        return try {
+            dpm.clearDeviceOwnerApp(appContext.packageName)
+            val stillOwner = isDeviceOwner()
+            if (stillOwner) {
+                Log.w(TAG, "clearDeviceOwnerApp returned but still device owner")
+                ClearOwnerResult(
+                    success = false,
+                    restoredHidden = restored,
+                    message = "still_device_owner"
+                )
+            } else {
+                Log.i(TAG, "Device Owner cleared; restoredHidden=$restored")
+                ClearOwnerResult(
+                    success = true,
+                    restoredHidden = restored,
+                    message = "ok"
+                )
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "clearDeviceOwnerApp failed", t)
+            ClearOwnerResult(
+                success = false,
+                restoredHidden = restored,
+                message = t.message ?: t.javaClass.simpleName
+            )
+        }
     }
 
     /**
