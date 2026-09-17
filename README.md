@@ -81,7 +81,17 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
   - `setMaximumTimeToLock(30 min)` は補完として残す。一部 OEM ではキーガード／画面オフと干渉しうるため、**SCREEN_OFF_TIMEOUT が残ることを優先**
   - 管理画面（`AdminActivity`）に現在の `SCREEN_OFF_TIMEOUT`（ms）を表示し、再適用後に確認できる
 
+## 音声ポリシー（v1.0.8）
+
+`PolicyApplier.apply()` で次も冪等に適用します（失敗はログのみ・適用全体は止めません）。
+
+- **マナー / サイレント ON**: `AudioManager.setRingerMode(RINGER_MODE_SILENT)`（音量すべて 0 を優先。一部 OEM で SILENT が拒否された場合は `VIBRATE` にフォールバックし、その後も各ストリームを 0 に強制）
+- **全ストリーム音量 0**: `setStreamVolume(stream, 0, 0)` — `MUSIC` / `RING` / `NOTIFICATION` / `SYSTEM` / `ALARM` / `VOICE_CALL` / `DTMF` / `ACCESSIBILITY`（利用可能なもの）。例外はスキップ
+- マニフェスト: `MODIFY_AUDIO_SETTINGS`、任意で `ACCESS_NOTIFICATION_POLICY`（DND の interruption filter を NONE/PRIORITY に試みる・ベストエフォート）
+- 管理画面に着信モードとメディア／着信音量の短いステータス行を表示
+
 ## リリース APK のビルド
+
 
 JDK 17 以上と Android SDK（compileSdk 35 / build-tools 35）が必要です。
 
@@ -201,11 +211,12 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 ドックホームの「管理」（または空領域の長押し）から `AdminActivity` を開くと:
 
 - Device Owner の有効 / 無効
-- **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（ドック Home 再設定・ダーク強化・タイムアウト再設定含む）
+- **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（ドック Home 再設定・ダーク強化・タイムアウト再設定・マナー／音量0 含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
 - 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
+- **音声**: 着信モード（SILENT/VIBRATE/…）とメディア／着信音量
 - **ダークモード**: SDK バージョン、API 有無、直近の適用結果
 - 許可リストの表示
 

@@ -1,5 +1,6 @@
 package app.igni.dpc.policy
 
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.UiModeManager
 import android.app.admin.DevicePolicyManager
@@ -9,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -25,7 +27,20 @@ data class ApplyResult(
     val message: String? = null,
     val screenTimeoutMs: Int? = null,
     val cameraPackages: List<String> = emptyList(),
-    val darkMode: DarkModeStatus? = null
+    val darkMode: DarkModeStatus? = null,
+    val audio: AudioStatus? = null
+)
+
+/**
+ * Result of audio / manner (silent) policy for Admin UI and logs.
+ * [result]: success | fail | never
+ */
+data class AudioStatus(
+    val ringerMode: String,
+    val musicVolume: Int?,
+    val ringVolume: Int?,
+    val result: String,
+    val detail: String
 )
 
 /**
@@ -47,6 +62,7 @@ data class DarkModeStatus(
  * - Hide **system** apps that are not kept (cannot safely uninstall).
  * - Prefer dock-style [HomeActivity] as HOME via persistent preferred activity.
  * - Apply display defaults: stronger dark mode + 30-minute screen timeout.
+ * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -98,6 +114,19 @@ class PolicyApplier(context: Context) {
         )
     }
 
+    /** Current ringer mode + music/ring volumes (live), for Admin UI. */
+    fun audioStatus(): AudioStatus {
+        val am = appContext.getSystemService(AudioManager::class.java)
+            ?: return AudioStatus("unknown", null, null, "never", "AudioManager unavailable")
+        return AudioStatus(
+            ringerMode = ringerModeLabel(am.ringerMode),
+            musicVolume = runCatching { am.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrNull(),
+            ringVolume = runCatching { am.getStreamVolume(AudioManager.STREAM_RING) }.getOrNull(),
+            result = "live",
+            detail = ""
+        )
+    }
+
     fun apply(): ApplyResult {
         if (!isDeviceOwner()) {
             Log.w(TAG, "Not device owner; skip apply")
@@ -106,7 +135,8 @@ class PolicyApplier(context: Context) {
                 hiddenCount = store.snapshot().size,
                 message = "not_device_owner",
                 cameraPackages = detectedCameraPackages(),
-                darkMode = darkModeStatus()
+                darkMode = darkModeStatus(),
+                audio = audioStatus()
             )
         }
 
@@ -211,13 +241,17 @@ class PolicyApplier(context: Context) {
         val dark = applyDarkMode()
         val timeoutMs = applyScreenTimeout()
 
+        // Audio: silent/manner + all volumes 0 (best-effort; never fail apply).
+        val audio = applyAudioPolicy()
+
         store.replace(hidden)
         store.markApplied()
         Log.i(
             TAG,
             "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden " +
                 "uninstallRequested=$uninstallRequested cameras=${cameras.size} " +
-                "timeoutMs=$timeoutMs dark=${dark.result}"
+                "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
+                "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume}"
         )
         return ApplyResult(
             success = true,
@@ -226,7 +260,8 @@ class PolicyApplier(context: Context) {
             uninstallRequested = uninstallRequested,
             screenTimeoutMs = timeoutMs,
             cameraPackages = cameras.sorted(),
-            darkMode = dark
+            darkMode = dark,
+            audio = audio
         )
     }
 
@@ -303,6 +338,144 @@ class PolicyApplier(context: Context) {
         val flags = PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
         val apps = appContext.packageManager.getInstalledApplications(flags)
         return apps.map { it.packageName }.toSet()
+    }
+
+
+    /**
+     * Silent / manner mode + zero volumes across streams.
+     * Prefer [AudioManager.RINGER_MODE_SILENT]; if blocked try VIBRATE, then still force volumes to 0.
+     * Optional best-effort DND interruption filter. Failures are logged; apply() still succeeds.
+     */
+    private fun applyAudioPolicy(): AudioStatus {
+        val am = appContext.getSystemService(AudioManager::class.java)
+        if (am == null) {
+            Log.w(TAG, "AudioManager unavailable")
+            return AudioStatus("unknown", null, null, "fail", "AudioManager unavailable")
+        }
+
+        val notes = mutableListOf<String>()
+        var anySuccess = false
+
+        // Prefer SILENT (volumes all 0 / Japan マナー as mute). Fall back to VIBRATE if
+        // set throws or read-back is not SILENT (some OEMs block silently).
+        runCatching {
+            am.ringerMode = AudioManager.RINGER_MODE_SILENT
+            Log.i(TAG, "AudioManager.setRingerMode(RINGER_MODE_SILENT)")
+        }.onFailure {
+            notes += "ringer=SILENT throw"
+            Log.w(TAG, "setRingerMode(SILENT) failed", it)
+        }
+        if (am.ringerMode == AudioManager.RINGER_MODE_SILENT) {
+            anySuccess = true
+            notes += "ringer=SILENT"
+        } else {
+            notes += "ringer=SILENT blocked(read=${ringerModeLabel(am.ringerMode)})"
+            runCatching {
+                am.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                Log.i(TAG, "AudioManager.setRingerMode(RINGER_MODE_VIBRATE) fallback")
+            }.onFailure {
+                notes += "ringer=VIBRATE throw"
+                Log.w(TAG, "setRingerMode(VIBRATE) failed", it)
+            }
+            if (am.ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
+                anySuccess = true
+                notes += "ringer=VIBRATE"
+            } else {
+                notes += "ringer=VIBRATE fail(read=${ringerModeLabel(am.ringerMode)})"
+            }
+        }
+
+        val streams = mutableListOf(
+            AudioManager.STREAM_MUSIC to "MUSIC",
+            AudioManager.STREAM_RING to "RING",
+            AudioManager.STREAM_NOTIFICATION to "NOTIFICATION",
+            AudioManager.STREAM_SYSTEM to "SYSTEM",
+            AudioManager.STREAM_ALARM to "ALARM",
+            AudioManager.STREAM_VOICE_CALL to "VOICE_CALL",
+            AudioManager.STREAM_DTMF to "DTMF",
+        )
+        // STREAM_ACCESSIBILITY: API 26+ (minSdk 26). Guard with constant lookup for OEM quirks.
+        runCatching {
+            val accessibility = AudioManager::class.java.getField("STREAM_ACCESSIBILITY").getInt(null)
+            streams += accessibility to "ACCESSIBILITY"
+        }.onFailure {
+            Log.w(TAG, "STREAM_ACCESSIBILITY unavailable", it)
+            notes += "ACCESSIBILITY=skip"
+        }
+
+        for ((stream, name) in streams) {
+            val ok = runCatching {
+                am.setStreamVolume(stream, 0, /* flags */ 0)
+                true
+            }.onFailure {
+                Log.w(TAG, "setStreamVolume($name) failed", it)
+            }.getOrDefault(false)
+            if (ok) {
+                anySuccess = true
+                notes += "$name=0"
+            } else {
+                notes += "$name=fail"
+            }
+        }
+
+        // Optional DND: interruption filter NONE (or PRIORITY). Requires ACCESS_NOTIFICATION_POLICY
+        // on many devices; Device Owner may still succeed — best-effort only.
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val nm = appContext.getSystemService(NotificationManager::class.java)
+                if (nm != null) {
+                    val granted = nm.isNotificationPolicyAccessGranted
+                    if (granted) {
+                        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                        notes += "interruptionFilter=NONE"
+                        anySuccess = true
+                        Log.i(TAG, "NotificationManager.setInterruptionFilter(NONE)")
+                    } else {
+                        // Try anyway as DO; may throw SecurityException.
+                        runCatching {
+                            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                            notes += "interruptionFilter=NONE"
+                            anySuccess = true
+                            Log.i(TAG, "NotificationManager.setInterruptionFilter(NONE) without grant")
+                        }.onFailure { secondary ->
+                            runCatching {
+                                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                                notes += "interruptionFilter=PRIORITY"
+                                anySuccess = true
+                                Log.i(TAG, "NotificationManager.setInterruptionFilter(PRIORITY)")
+                            }.onFailure {
+                                notes += "interruptionFilter=skip"
+                                Log.w(TAG, "setInterruptionFilter failed (policy not granted)", secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }.onFailure {
+            notes += "interruptionFilter=fail"
+            Log.w(TAG, "DND interruption filter failed", it)
+        }
+
+        val musicVol = runCatching { am.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrNull()
+        val ringVol = runCatching { am.getStreamVolume(AudioManager.STREAM_RING) }.getOrNull()
+        val mode = ringerModeLabel(am.ringerMode)
+        val result = if (anySuccess) "success" else "fail"
+        val status = AudioStatus(
+            ringerMode = mode,
+            musicVolume = musicVol,
+            ringVolume = ringVol,
+            result = result,
+            detail = notes.joinToString("; ")
+        )
+        Log.i(TAG, "Audio apply result=$result ringer=$mode music=$musicVol ring=$ringVol detail=${status.detail}")
+        return status
+    }
+
+    private fun ringerModeLabel(mode: Int): String = when (mode) {
+        AudioManager.RINGER_MODE_SILENT -> "SILENT"
+        AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
+        AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
+        else -> "unknown($mode)"
     }
 
     /**

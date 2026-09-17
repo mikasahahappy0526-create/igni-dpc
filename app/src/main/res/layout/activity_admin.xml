@@ -196,6 +196,16 @@
             tools:text="画面オフタイムアウト: 1800000 ms" />
 
         <TextView
+            android:id="@+id/audioStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/igni_muted"
+            android:textSize="14sp"
+            tools:text="音声: 着信モード=SILENT / メディア=0 / 着信音=0" />
+
+        <TextView
             android:id="@+id/cameraPackages"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

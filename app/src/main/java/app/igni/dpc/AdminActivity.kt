@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import app.igni.dpc.databinding.ActivityAdminBinding
+import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.PolicyApplier
 import app.igni.dpc.update.AppSelfUpdater
@@ -106,6 +107,7 @@ class AdminActivity : AppCompatActivity() {
         }
         binding.hiddenCount.text = getString(R.string.hidden_count, applier.hiddenCount())
         updateTimeoutLabel(applier.currentScreenTimeoutMs())
+        updateAudioLabel(applier.audioStatus())
         updateCameraLabel(applier.detectedCameraPackages())
         updateDarkModeLabel(applier.darkModeStatus())
         binding.allowlist.text = applier.allowlistForDisplay().joinToString("\n")
@@ -122,6 +124,21 @@ class AdminActivity : AppCompatActivity() {
             getString(R.string.screen_timeout_value, timeoutMs)
         } else {
             getString(R.string.screen_timeout_unknown)
+        }
+    }
+
+    private fun updateAudioLabel(status: AudioStatus) {
+        val music = status.musicVolume?.toString() ?: "—"
+        val ring = status.ringVolume?.toString() ?: "—"
+        if (status.ringerMode == "unknown" && status.musicVolume == null && status.ringVolume == null) {
+            binding.audioStatus.text = getString(R.string.audio_status_unknown)
+        } else {
+            binding.audioStatus.text = getString(
+                R.string.audio_status_value,
+                status.ringerMode,
+                music,
+                ring
+            )
         }
     }
 
@@ -174,6 +191,7 @@ class AdminActivity : AppCompatActivity() {
                 if (result.screenTimeoutMs != null) {
                     updateTimeoutLabel(result.screenTimeoutMs)
                 }
+                result.audio?.let { updateAudioLabel(it) }
                 updateCameraLabel(result.cameraPackages)
                 result.darkMode?.let { updateDarkModeLabel(it) }
                 val message = if (result.success) {
