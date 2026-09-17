@@ -2,6 +2,7 @@
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-policies>
         <!-- Declared for Device Owner lock/wipe capability. Hide uses Device Owner APIs, not these tags. -->
+        <limit-password />
         <force-lock />
         <wipe-data />
     </uses-policies>

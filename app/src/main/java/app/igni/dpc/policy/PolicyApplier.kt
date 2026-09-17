@@ -1,11 +1,14 @@
 package app.igni.dpc.policy
 
+import android.app.UiModeManager
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
@@ -21,6 +24,8 @@ data class ApplyResult(
 /**
  * Idempotent Device Owner policy: hide launchable apps except the product allowlist
  * and a safety keep-list. Hide is preferred over uninstall.
+ *
+ * Also applies display defaults: system dark mode ON and screen-off timeout 30 minutes.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -96,6 +101,10 @@ class PolicyApplier(context: Context) {
         // without relying on the OEM launcher layout (which often omits Settings).
         setDedicatedHomePreferred()
 
+        // Display policies: dark mode + 30 min screen timeout (best-effort; never fail apply).
+        applyDarkMode()
+        applyScreenTimeout()
+
         store.replace(hidden)
         store.markApplied()
         Log.i(TAG, "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden")
@@ -128,6 +137,52 @@ class PolicyApplier(context: Context) {
         return apps.map { it.packageName }.toSet()
     }
 
+    /** System-wide night mode. Failures are logged; apply() still succeeds. */
+    private fun applyDarkMode() {
+        val uiMode = appContext.getSystemService(UiModeManager::class.java)
+
+        runCatching {
+            uiMode?.setNightMode(UiModeManager.MODE_NIGHT_YES)
+            Log.i(TAG, "UiModeManager.setNightMode(MODE_NIGHT_YES)")
+        }.onFailure { Log.w(TAG, "setNightMode failed", it) }
+
+        // setNightModeActivated is public on device (API 30+) but missing from some SDK stubs;
+        // invoke reflectively so we still prefer it when present.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && uiMode != null) {
+            runCatching {
+                val m = UiModeManager::class.java.getMethod("setNightModeActivated", Boolean::class.javaPrimitiveType)
+                m.invoke(uiMode, true)
+                Log.i(TAG, "UiModeManager.setNightModeActivated(true)")
+            }.onFailure { Log.w(TAG, "setNightModeActivated failed", it) }
+        }
+
+        // Fallback / reinforce via Settings.Secure (key is @hide; use literal).
+        runCatching {
+            val ok = Settings.Secure.putInt(
+                appContext.contentResolver,
+                SECURE_UI_NIGHT_MODE,
+                UiModeManager.MODE_NIGHT_YES
+            )
+            Log.i(TAG, "Settings.Secure.$SECURE_UI_NIGHT_MODE=$MODE_NIGHT_YES put=$ok")
+        }.onFailure { Log.w(TAG, "Settings.Secure.$SECURE_UI_NIGHT_MODE failed", it) }
+    }
+
+    /** Screen-off timeout 30 minutes. Also set DPM max time-to-lock as a complementary ceiling. */
+    private fun applyScreenTimeout() {
+        runCatching {
+            val ok = Settings.System.putInt(
+                appContext.contentResolver,
+                Settings.System.SCREEN_OFF_TIMEOUT,
+                SCREEN_OFF_TIMEOUT_MS
+            )
+            Log.i(TAG, "SCREEN_OFF_TIMEOUT=${SCREEN_OFF_TIMEOUT_MS}ms put=$ok")
+        }.onFailure { Log.w(TAG, "SCREEN_OFF_TIMEOUT failed", it) }
+
+        runCatching {
+            dpm.setMaximumTimeToLock(admin, SCREEN_OFF_TIMEOUT_MS.toLong())
+            Log.i(TAG, "setMaximumTimeToLock(${SCREEN_OFF_TIMEOUT_MS}ms)")
+        }.onFailure { Log.w(TAG, "setMaximumTimeToLock failed", it) }
+    }
 
     private fun setDedicatedHomePreferred() {
         val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
@@ -163,6 +218,11 @@ class PolicyApplier(context: Context) {
 
     companion object {
         private const val TAG = "IgniPolicy"
+        private const val MODE_NIGHT_YES = UiModeManager.MODE_NIGHT_YES
+        /** @hide Settings.Secure.UI_NIGHT_MODE */
+        private const val SECURE_UI_NIGHT_MODE = "ui_night_mode"
+        /** 30 minutes in milliseconds. */
+        private const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
         private const val MATCH_FLAGS =
             PackageManager.MATCH_DISABLED_COMPONENTS or
                 PackageManager.MATCH_UNINSTALLED_PACKAGES or

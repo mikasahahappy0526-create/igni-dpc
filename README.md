@@ -33,6 +33,13 @@ OEM ランチャーに Settings が出ない端末向けに、`HomeActivity` を
 - コンポーネント: `app.igni.dpc/.HomeActivity`
 - 管理画面はホーム右下の小さな「管理」から開く（`AdminActivity` の LAUNCHER フィルタは外してある）
 
+## 表示ポリシー（v1.0.2+）
+
+`PolicyApplier.apply()`（プロビジョニング完了・起動・再適用時）で次も冪等に適用します。個別パスの失敗はログのみで、適用全体は止めません。
+
+- **ダークモード ON**: `UiModeManager.setNightMode(MODE_NIGHT_YES)` / API 30+ は `setNightModeActivated(true)`、必要なら `Settings.Secure.UI_NIGHT_MODE` も設定
+- **画面オフ 30 分**: `Settings.System.SCREEN_OFF_TIMEOUT = 1_800_000`（ms）。補完として `DevicePolicyManager.setMaximumTimeToLock` も 30 分に設定
+
 ## リリース APK のビルド
 
 JDK 17 以上と Android SDK（compileSdk 35 / build-tools 35）が必要です。
