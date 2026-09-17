@@ -122,7 +122,7 @@ keytool -genkeypair -v \
 同梱キーストア向けの値:
 
 ```
-F7X3v4acgg_NnG70zRR6n9qdLmWvXGYg1FtPH-SBHG0
+yOZEhRr9nIbif0_vEKh4PE1exHHPPUQeDOuyGnkuOwA
 ```
 
 キーストアを差し替えたら `./scripts/signature-checksum.sh` で必ず作り直してください。
@@ -170,7 +170,7 @@ keytool -exportcert -alias igni -keystore keystore/igni-release.jks \
 {
   "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "app.igni.dpc/.AdminReceiver",
   "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://example.com/igni-dpc.apk",
-  "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "F7X3v4acgg_NnG70zRR6n9qdLmWvXGYg1FtPH-SBHG0",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "yOZEhRr9nIbif0_vEKh4PE1exHHPPUQeDOuyGnkuOwA",
   "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
   "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": false
 }
