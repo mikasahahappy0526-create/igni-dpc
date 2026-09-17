@@ -1,6 +1,9 @@
 # イグニ DPC（Device Policy Controller）
 
-完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**標準（OEM）のホーム画面**を使い、**設定**・**Play ストア**・**カメラ**・**Chrome** 以外の起動可能アプリは、安全に隠せるものだけ `DevicePolicyManager.setApplicationHidden` で非表示にします（アンインストールはしません。システムランチャーは置き換えません）。
+完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**標準（OEM）のホーム画面**を使い、**設定**・**Play ストア**・**カメラ**・**Chrome** 以外について次を適用します（システムランチャーは置き換えません）。
+
+- **ユーザーアプリ**（非システム）: Device Owner として `PackageInstaller.uninstall` で**サイレントアンインストール**（容量を解放）
+- **システムアプリ**: アンインストールせず `DevicePolicyManager.setApplicationHidden(true)` で**非表示のみ**
 
 - パッケージ名: `app.igni.dpc`
 - アプリ名: `イグニ`
@@ -11,7 +14,7 @@
 
 プロビジョニング完了時（`GET_PROVISIONING_MODE` → 完全管理端末、続けて `ADMIN_POLICY_COMPLIANCE`）、Device Owner 有効化時、起動完了時に、同じポリシーを冪等に適用します。ユーザー操作は不要です。
 
-**許可リスト（ホームに残す）**
+**許可リスト（残す・消さない）**
 
 - `com.android.settings`（設定）および OEM Settings パッケージ
 - `com.android.vending`（Play ストア）
@@ -22,7 +25,7 @@
 
 **隠さない安全リスト（例）**
 
-SystemUI、PackageInstaller、PermissionController、Google Play 開発者サービス、セットアップウィザード、Managed Provisioning、デフォルトランチャー、IME（キーボード）、WebView など。これらを隠すと端末が操作不能になるため、起動アイコンがあっても隠しません。
+SystemUI、PackageInstaller、PermissionController、Google Play 開発者サービス、セットアップウィザード、Managed Provisioning、デフォルトランチャー、IME（キーボード）、WebView など。これらを隠したり消したりすると端末が操作不能になるため、対象外です。
 
 Lock Task（キオスク）は **デフォルトオフ** です。有効にする場合は `app/build.gradle.kts` の `ENABLE_LOCK_TASK` を `true` にしてください。
 
@@ -33,7 +36,7 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - `PolicyApplier` は `addPersistentPreferredActivity` を呼ばず、適用時に `clearPackagePersistentPreferredActivities(admin, packageName)` で過去の HOME 乗っ取りを解除します
 - `HomeActivity` はマニフェストで無効化（HOME/DEFAULT フィルタなし）
 - `AdminActivity` は通常の `LAUNCHER` アイコン（「ポリシーを再適用」専用）。HOME には強制しません
-- 非許可リストのアプリは隠し、ストックランチャーに Settings / Play / Camera / Chrome（と OEM が置くもの）が残るようにします
+- 非許可リストのユーザーアプリはアンインストール、システムアプリは非表示にし、ストックランチャーに Settings / Play / Camera / Chrome（と OEM が置くもの）が残るようにします
 - ショートカットのサイレント pin は DO でもユーザー確認が必要なことが多く、信頼できないため行いません（hide + 標準ホームに依存）
 
 ## カメラ保護（v1.0.4）
@@ -46,6 +49,19 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
   - 既存の静的リスト（Sony / Xiaomi / Transsion / Sharp / FCNT / Kyocera 等を拡充）
 - `PolicyApplier.apply()` のたびに検出したカメラを **明示的に unhide** し、`HiddenStore` からも除去
 - 管理画面（`AdminActivity`）に検出カメラパッケージ一覧を表示
+
+## アンインストール vs 非表示（v1.0.5）
+
+`PolicyApplier.apply()` は許可リスト外のパッケージを次のように扱います。
+
+| 種別 | 判定 | 動作 |
+|---|---|---|
+| ユーザーアプリ | `FLAG_SYSTEM` / `FLAG_UPDATED_SYSTEM_APP` なし | **サイレントアンインストール**（`PackageInstaller.uninstall`、結果はログ） |
+| システムアプリ | 上記フラグあり | **非表示のみ**（`setApplicationHidden(true)`）。起動可能なもののみ |
+
+- 許可リスト・DPC 自身・IME・SystemUI 等（`KeepPackages.shouldKeep`）は絶対に消さない／隠さない
+- アンインストールしたパッケージは `HiddenStore` から除去（もう無いため）。システム非表示は追跡を継続
+- 「アプリ一覧を表示に戻す」は **隠したシステムアプリのみ**復元可能。アンインストール済みユーザーアプリは復元不可（Play 等から再インストール）
 
 ## 表示ポリシー（v1.0.2+ / 強化 v1.0.3）
 
@@ -178,8 +194,8 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 ランチャーの「イグニ」アイコン（`AdminActivity`）から開くと:
 
 - Device Owner の有効 / 無効
-- **ポリシーを再適用** — 起動可能アプリを再スキャンして隠す（HOME 乗っ取り解除・タイムアウト再設定含む）
-- **アプリ一覧を表示に戻す** — この DPC が隠したパッケージを再表示（リストは端末内に保存）
+- **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（HOME 乗っ取り解除・タイムアウト再設定含む）
+- **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - 許可リストの表示
 

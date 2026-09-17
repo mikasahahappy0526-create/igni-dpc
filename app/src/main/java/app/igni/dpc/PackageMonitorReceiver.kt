@@ -6,7 +6,7 @@ import android.content.Intent
 import android.util.Log
 import app.igni.dpc.policy.PolicyApplier
 
-/** Hide newly installed launchable apps that are not on the keep list. */
+/** Re-apply policy when packages are added/changed (uninstall user / hide system). */
 class PackageMonitorReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_PACKAGE_ADDED &&
@@ -17,7 +17,7 @@ class PackageMonitorReceiver : BroadcastReceiver() {
         if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
         val applier = PolicyApplier(context)
         if (!applier.isDeviceOwner()) return
-        Log.i(TAG, "Package change ${intent.dataString}; re-applying hide policy")
+        Log.i(TAG, "Package change ${intent.dataString}; re-applying policy")
         applier.apply()
     }
 

@@ -89,6 +89,26 @@
             app:cornerRadius="14dp"
             app:strokeColor="@color/igni_outline" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="12dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/reapply_note"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/unhide_note"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp" />
+
         <ProgressBar
             android:id="@+id/progress"
             android:layout_width="wrap_content"

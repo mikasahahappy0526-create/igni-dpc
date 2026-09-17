@@ -1,32 +1,36 @@
 package app.igni.dpc.policy
 
+import android.app.PendingIntent
 import android.app.UiModeManager
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
+import app.igni.dpc.UninstallStatusReceiver
 
 data class ApplyResult(
     val success: Boolean,
     val hiddenCount: Int,
     val newlyHidden: Int = 0,
+    val uninstallRequested: Int = 0,
     val message: String? = null,
     val screenTimeoutMs: Int? = null,
     val cameraPackages: List<String> = emptyList()
 )
 
 /**
- * Idempotent Device Owner policy: hide launchable apps except the product allowlist
- * and a safety keep-list. Hide is preferred over uninstall.
+ * Idempotent Device Owner policy:
+ * - Uninstall **user** apps that are not on the keep / allowlist (frees storage).
+ * - Hide **system** apps that are not kept (cannot safely uninstall).
  *
  * Does **not** replace the system launcher — Home stays with the OEM/stock launcher.
- * Non-allowlist apps are hidden so the stock launcher only surfaces Settings / Play /
- * Camera / Chrome (plus whatever the OEM still places).
+ * Non-allowlist user apps are removed; system bloat stays hidden only.
  *
  * Camera apps are detected dynamically (image-capture handlers + packageName contains
  * "camera" + static OEM list) and are always unhidden on every apply(), even if they
@@ -103,8 +107,11 @@ class PolicyApplier(context: Context) {
         }
         Log.i(TAG, "Camera unhide pass done: unhidden=$camerasUnhidden kept=${cameras.size}")
 
+        val installed = installedPackageNames()
+        val launchable = launchablePackageNames()
+
         // Safety: never leave keep-list packages hidden.
-        for (pkg in installedPackageNames()) {
+        for (pkg in installed) {
             if (keep.shouldKeep(pkg) && dpm.isApplicationHidden(admin, pkg)) {
                 val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
                 if (restored) {
@@ -115,23 +122,47 @@ class PolicyApplier(context: Context) {
         }
 
         var newlyHidden = 0
-        for (pkg in launchablePackageNames()) {
+        var uninstallRequested = 0
+        for (pkg in installed) {
             if (keep.shouldKeep(pkg)) continue
-            // Never hide a camera package solely because it lacks a standard name —
-            // image-capture handlers must survive (already covered by shouldKeep).
+            // Hard guard: never touch this DPC.
+            if (pkg == appContext.packageName) continue
             if (pkg in cameras) continue
-            val ok = runCatching {
-                dpm.setApplicationHidden(admin, pkg, true)
-            }.onFailure {
-                Log.w(TAG, "Failed to hide $pkg", it)
-            }.getOrDefault(false)
-            if (ok) {
-                if (hidden.add(pkg)) newlyHidden++
-                Log.i(TAG, "Hidden $pkg")
+
+            if (isSystemOrUpdatedSystemApp(pkg)) {
+                // System bloat: hide only (never uninstall). Same launchable scope as prior releases.
+                if (pkg !in launchable) continue
+                val ok = runCatching {
+                    dpm.setApplicationHidden(admin, pkg, true)
+                }.onFailure {
+                    Log.w(TAG, "Failed to hide system app $pkg", it)
+                }.getOrDefault(false)
+                if (ok) {
+                    if (hidden.add(pkg)) newlyHidden++
+                    Log.i(TAG, "Hidden system app $pkg")
+                }
+            } else {
+                // Removable user app: silent uninstall as Device Owner (frees storage).
+                // Fire-and-forget; status logged by UninstallStatusReceiver.
+                if (requestSilentUninstall(pkg)) {
+                    uninstallRequested++
+                    if (hidden.remove(pkg)) {
+                        Log.i(TAG, "Removed uninstalled package $pkg from HiddenStore")
+                    }
+                }
             }
         }
 
-        // Optional kiosk allowlist. Default false — hide-only matches stock-launcher UX.
+        // Drop HiddenStore entries for packages that are no longer installed
+        // (previous hide-only versions may have tracked user apps we now uninstall).
+        val after = installedPackageNames()
+        val gone = hidden.filter { it !in after }.toList()
+        for (pkg in gone) {
+            hidden.remove(pkg)
+            Log.i(TAG, "Pruned gone package $pkg from HiddenStore")
+        }
+
+        // Optional kiosk allowlist. Default false — hide/uninstall + stock-launcher UX.
         if (BuildConfig.ENABLE_LOCK_TASK) {
             val lockTaskPkgs = linkedSetOf(
                 "com.android.settings",
@@ -160,17 +191,22 @@ class PolicyApplier(context: Context) {
         Log.i(
             TAG,
             "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden " +
-                "cameras=${cameras.size} timeoutMs=$timeoutMs"
+                "uninstallRequested=$uninstallRequested cameras=${cameras.size} timeoutMs=$timeoutMs"
         )
         return ApplyResult(
             success = true,
             hiddenCount = hidden.size,
             newlyHidden = newlyHidden,
+            uninstallRequested = uninstallRequested,
             screenTimeoutMs = timeoutMs,
             cameraPackages = cameras.sorted()
         )
     }
 
+    /**
+     * Restore packages this DPC has **hidden** (typically system apps).
+     * Cannot restore user apps that were uninstalled — those must be reinstalled from Play / APK.
+     */
     fun unhideAll(): Int {
         if (!isDeviceOwner()) return 0
         val hidden = store.snapshot()
@@ -186,14 +222,60 @@ class PolicyApplier(context: Context) {
         return restored
     }
 
+    /**
+     * Request silent uninstall via [android.content.pm.PackageInstaller.uninstall] as Device Owner.
+     * Returns true if the uninstall request was submitted (not that it already finished).
+     */
+    private fun requestSilentUninstall(packageName: String): Boolean {
+        // Ensure we are not blocking uninstall of this target (DPC itself stays blocked).
+        runCatching { dpm.setUninstallBlocked(admin, packageName, false) }
+
+        return runCatching {
+            val statusIntent = Intent(UninstallStatusReceiver.ACTION).apply {
+                setPackage(appContext.packageName)
+                putExtra(UninstallStatusReceiver.EXTRA_PACKAGE, packageName)
+            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_MUTABLE
+                } else {
+                    0
+                }
+            val pending = PendingIntent.getBroadcast(
+                appContext,
+                packageName.hashCode(),
+                statusIntent,
+                flags
+            )
+            appContext.packageManager.packageInstaller.uninstall(
+                packageName,
+                pending.intentSender
+            )
+            Log.i(TAG, "Uninstall requested for user app $packageName")
+            true
+        }.onFailure {
+            Log.w(TAG, "Failed to request uninstall for $packageName", it)
+        }.getOrDefault(false)
+    }
+
+    private fun isSystemOrUpdatedSystemApp(packageName: String): Boolean {
+        return runCatching {
+            val info = appContext.packageManager.getApplicationInfo(packageName, 0)
+            (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                (info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        }.getOrDefault(true) // treat unknown as system — safer than uninstalling
+    }
+
     private fun launchablePackageNames(): Set<String> {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val infos = appContext.packageManager.queryIntentActivities(intent, MATCH_FLAGS)
         return infos.mapNotNull { it.activityInfo?.packageName }.toSet()
     }
 
+    /** Currently installed packages (excludes residual uninstalled-with-data entries). */
     private fun installedPackageNames(): Set<String> {
-        val apps = appContext.packageManager.getInstalledApplications(MATCH_FLAGS)
+        val flags = PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
+        val apps = appContext.packageManager.getInstalledApplications(flags)
         return apps.map { it.packageName }.toSet()
     }
 

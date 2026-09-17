@@ -124,5 +124,14 @@
                 <data android:scheme="package" />
             </intent-filter>
         </receiver>
+
+        <!-- PackageInstaller uninstall status (Device Owner silent uninstall). -->
+        <receiver
+            android:name=".UninstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.igni.dpc.action.UNINSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

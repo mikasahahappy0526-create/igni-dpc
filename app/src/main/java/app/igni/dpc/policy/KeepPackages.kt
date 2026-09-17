@@ -9,7 +9,7 @@ import android.util.Log
 import android.view.inputmethod.InputMethodManager
 
 /**
- * Packages that must remain visible or installed for a usable dedicated terminal.
+ * Packages that must remain installed (and visible when launchable) for a usable dedicated terminal.
  *
  * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome.
  * Critical keep-list: System UI, provisioning, keyboards, default launcher, Play services, DPC, etc.
@@ -242,7 +242,7 @@ class KeepPackages(private val context: Context) {
 
         /**
          * Never hide these even if they expose a launcher icon.
-         * Prefer hiding over uninstalling; this list is the safety net against bricking.
+         * Never hide or uninstall these; this list is the safety net against bricking.
          */
         val CRITICAL_PACKAGES: Set<String> = setOf(
             "android",

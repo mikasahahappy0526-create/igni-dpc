@@ -100,7 +100,12 @@ class AdminActivity : AppCompatActivity() {
                 }
                 updateCameraLabel(result.cameraPackages)
                 val message = if (result.success) {
-                    getString(R.string.toast_reapplied, result.hiddenCount, result.newlyHidden)
+                    getString(
+                        R.string.toast_reapplied,
+                        result.hiddenCount,
+                        result.newlyHidden,
+                        result.uninstallRequested
+                    )
                 } else {
                     getString(R.string.toast_not_owner)
                 }
