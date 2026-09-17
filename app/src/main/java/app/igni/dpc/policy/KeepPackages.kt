@@ -11,7 +11,8 @@ import android.view.inputmethod.InputMethodManager
 /**
  * Packages that must remain installed (and visible when launchable) for a usable dedicated terminal.
  *
- * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome + LINE.
+ * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome + LINE + Igni.
+ * Force-hide: Google app / search / assistant (never treat as Chrome substitute).
  * Critical keep-list: System UI, provisioning, keyboards, default launcher, Play services, DPC, etc.
  *
  * Camera packages are detected dynamically (image-capture intent handlers, launcher apps
@@ -21,6 +22,8 @@ import android.view.inputmethod.InputMethodManager
 class KeepPackages(private val context: Context) {
 
     fun shouldKeep(packageName: String): Boolean {
+        // Google app / search must never stay via HOME-handler keep.
+        if (isForceHide(packageName)) return false
         if (packageName == context.packageName) return true
         if (packageName in PRODUCT_ALLOWLIST) return true
         if (packageName in CRITICAL_PACKAGES) return true
@@ -32,10 +35,26 @@ class KeepPackages(private val context: Context) {
     }
 
     /**
+     * Google app / Assistant / search lite — hide and uninstall-if-possible.
+     * Never treat these as a Chrome substitute (Sense3 showed Google instead of Chrome).
+     */
+    fun isForceHide(packageName: String): Boolean {
+        if (packageName in CHROME_PACKAGES) return false
+        if (packageName == PLAY_STORE_PACKAGE) return false
+        if (packageName in SETTINGS_PACKAGES) return false
+        if (packageName == context.packageName) return false
+        if (packageName == IGN_PACKAGE) return false
+        if (packageName in FORCE_HIDE_GOOGLE) return true
+        return FORCE_HIDE_PREFIXES.any { matchesPrefix(packageName, it) }
+    }
+
+    /**
      * Hard deny for PackageInstaller.uninstall — defense in depth beyond [shouldKeep]
      * (races / allowlist gaps must never remove Chrome, Play, Settings, LINE, or this DPC).
      */
     fun isHardDenyUninstall(packageName: String): Boolean {
+        // Allow uninstall of force-hide Google search/app packages.
+        if (isForceHide(packageName)) return false
         if (packageName == context.packageName) return true
         if (packageName in HARD_DENY_UNINSTALL) return true
         if (packageName in CHROME_PACKAGES) return true
@@ -48,12 +67,11 @@ class KeepPackages(private val context: Context) {
     fun describeKeepReasons(): List<String> {
         return buildList {
             addAll(PRODUCT_ALLOWLIST)
-            add(context.packageName)
+            if (IGN_PACKAGE !in this) add(IGN_PACKAGE)
+            if (context.packageName !in this) add(context.packageName)
             // Show dynamically detected cameras that are not already in the static list.
             for (pkg in detectCameraPackages().sorted()) {
-                if (pkg !in PRODUCT_ALLOWLIST && pkg != context.packageName) {
-                    add(pkg)
-                }
+                if (pkg !in this) add(pkg)
             }
         }
     }
@@ -244,7 +262,27 @@ class KeepPackages(private val context: Context) {
             LINE_PACKAGE,
         )
 
-        /** User-facing apps that must stay launchable from the dedicated home. */
+        const val IGN_PACKAGE = "app.igni.dpc"
+
+        /**
+         * Google app / search / assistant — force hide (+ uninstall if removable).
+         * Do **not** treat as Chrome. Never includes Chrome / Play / Settings.
+         */
+        val FORCE_HIDE_GOOGLE: Set<String> = linkedSetOf(
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.apps.googleassistant",
+            "com.google.android.apps.assistant",
+            "com.google.android.apps.searchlite",
+            "com.google.android.apps.bard",
+            "com.google.android.apps.gemini",
+        )
+
+        /** Prefix matches for Google search shells (narrow — not all com.google.android.apps.*). */
+        val FORCE_HIDE_PREFIXES: List<String> = listOf(
+            "com.google.android.googlequicksearchbox",
+        )
+
+        /** User-facing apps that must stay launchable from the stock OEM home. */
         val PRODUCT_ALLOWLIST: Set<String> = linkedSetOf(
             // Settings (+ OEM variants)
             "com.android.settings",
@@ -279,6 +317,8 @@ class KeepPackages(private val context: Context) {
             CHROME_CANARY_PACKAGE,
             // LINE
             LINE_PACKAGE,
+            // Igni DPC itself (AdminActivity LAUNCHER icon on page 1 when OEM places it)
+            IGN_PACKAGE,
         )
 
         /**

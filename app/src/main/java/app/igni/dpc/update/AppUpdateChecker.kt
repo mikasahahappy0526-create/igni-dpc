@@ -37,7 +37,7 @@ object AppUpdateChecker {
     /** Always-latest mirror published alongside each igni-dpc release. */
     const val MIRROR_APK_URL =
         "https://github.com/mikasahahappy0526-create/i/releases/download/1/d.apk"
-    private const val USER_AGENT = "Igni-DPC-Updater/1.0.18 (Android; DeviceOwner)"
+    private const val USER_AGENT = "Igni-DPC-Updater/1.0.19 (Android; DeviceOwner)"
 
     fun checkForUpdate(currentVersionName: String): CheckResult {
         return try {

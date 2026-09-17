@@ -4,7 +4,7 @@
     <string name="status_label">Device Owner 状態</string>
     <string name="status_device_owner">はい</string>
     <string name="status_not_device_owner">いいえ</string>
-    <string name="hint_owner">この端末はイグニの Device Owner です。ホームは端末標準（Samsung One UI など）のままです。許可リスト外のユーザーアプリはアンインストール（容量解放）、システムアプリの不要なものは非表示にします。設定・Play・Chrome・LINE・カメラは表示を維持。システムUI・キーボードなど端末動作に必要なパッケージは対象外です。</string>
+    <string name="hint_owner">この端末はイグニの Device Owner です。ホームは端末標準（Samsung One UI など）のままです（カスタムHOMEなし）。許可リスト外のユーザーアプリはアンインストール（容量解放）、システムアプリの不要なものは非表示。設定・Play・Chrome・LINE・カメラ・イグニは表示を維持。Googleアプリ（検索）は非表示／削除を試行し、Chromeをブラウザにします。システムUI・キーボードなど端末動作に必要なパッケージは対象外です。</string>
     <string name="hint_not_owner">Device Owner ではありません。工場出荷状態にリセットしたうえで、セットアップ画面でQRコードを読み取り、このアプリを端末管理者としてプロビジョニングしてください。</string>
     <string name="btn_reapply">ポリシーを再適用</string>
     <string name="btn_unhide">アプリ一覧を表示に戻す</string>
@@ -61,10 +61,16 @@
     <string name="btn_install_chrome">Chromeを入れる</string>
     <string name="btn_install_chrome_play">Playで入れる（Chrome）</string>
     <string name="chrome_status_idle">Chrome インストール: 未試行</string>
-    <string name="chrome_install_note">ポリシー適用後、Chrome 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時はログとステータスのみ（自動では Play を開きません）。管理画面の「Playで入れる」から明示的に開けます。適用時に Chrome は絶対にアンインストール／非表示しません。</string>
+    <string name="chrome_install_note">ポリシー適用後、Chrome 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします（Playは自動で開きません）。利用可能なら http/https の既定ハンドラに Chrome を設定します。Googleアプリは Chrome の代替にしません。適用時に Chrome は絶対にアンインストール／非表示しません。</string>
     <string name="toast_chrome_install_started">Chrome インストールを開始しました</string>
     <string name="toast_chrome_play_opened">Play ストアで Chrome を開きました</string>
     <string name="chrome_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
+
+
+    <string name="google_app_status_value">Googleアプリ: %1$s</string>
+    <string name="home_layout_status_value">%1$s</string>
+    <string name="chrome_browser_status_value">Chrome既定ブラウザ: %1$s</string>
+    <string name="home_layout_note">ホーム1ページ目への自動固定は OEM により確認が必要で、Device Owner でもサイレント保証はありません。設定・Play・Chrome・カメラ・イグニは許可リストで表示されます。カスタムHOME／ドックは使いません。</string>
 
     <string name="btn_return_personal">個人用に戻す（Device Owner解除）</string>
     <string name="return_personal_note">「個人用に戻す」は Device Owner を解除し、イグニを通常アプリにします。非表示にしたシステムアプリは再表示されますが、アンインストール済みのユーザーアプリは戻りません。ポリシー（非表示・アンインストール・ダーク／音量等）は以降適用されません。</string>

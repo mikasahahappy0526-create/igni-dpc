@@ -26,11 +26,12 @@ import java.util.zip.ZipFile
 /**
  * Ensures Chrome ([KeepPackages.CHROME_PACKAGE]) is installed after Device Owner policy apply.
  *
- * Strategy (v1.0.18 silent-only auto):
+ * Strategy (v1.0.19 silent-only auto):
  * 1. If package present but DPM-hidden / disabled → unhide / enable; treat as installed only if usable.
  * 2. If missing → Uptodown download + PackageInstaller only (no Play).
- * 3. Hard failures → log + status prefs only; never open Play from auto paths.
- * 4. Admin UI may call [openPlayStore] as an explicit user action.
+ * 3. When usable → best-effort DPM persistent preferred for http/https VIEW (Chrome, not Google app).
+ * 4. Hard failures → log + status prefs only; never open Play from auto paths.
+ * 5. Admin UI may call [openPlayStore] as an explicit user action.
  *
  * Fire-and-forget; never blocks [app.igni.dpc.policy.PolicyApplier.apply].
  */
@@ -94,6 +95,7 @@ object ChromeInstaller {
             if (isChromeInstalled(app)) {
                 Log.i(TAG, "Chrome already installed; skip")
                 persist(app, "already_installed", "Chrome はインストール済み")
+                preferChromeAsBrowser(app)
                 return
             }
 
@@ -137,6 +139,7 @@ object ChromeInstaller {
             }
             if (isChromeInstalled(app)) {
                 persist(app, "success", "インストール確認済み (${info.version ?: ext})")
+                preferChromeAsBrowser(app)
             } else {
                 persist(app, "installing", "インストール要求を送信済み（結果はログ）")
             }
@@ -254,6 +257,62 @@ object ChromeInstaller {
 
     fun persistSuccess(context: Context) {
         persist(context, "success", "サイレントインストール成功")
+        preferChromeAsBrowser(context.applicationContext)
+    }
+
+    /**
+     * Device Owner: set Chrome as persistent preferred activity for http/https VIEW.
+     * Clears Google app preferred handlers first. Best-effort; never throws.
+     */
+    fun preferChromeAsBrowser(context: Context) {
+        val app = context.applicationContext
+        val dpm = app.getSystemService(DevicePolicyManager::class.java) ?: return
+        if (!dpm.isDeviceOwnerApp(app.packageName)) return
+        if (!isChromeInstalled(app)) return
+        val admin = AdminReceiver.componentName(app)
+
+        for (pkg in KeepPackages.FORCE_HIDE_GOOGLE) {
+            runCatching { dpm.clearPackagePersistentPreferredActivities(admin, pkg) }
+        }
+
+        val pm = app.packageManager
+        val launcher = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setPackage(KeepPackages.CHROME_PACKAGE)
+        val launchInfo = runCatching {
+            pm.queryIntentActivities(launcher, PackageManager.MATCH_ALL)
+        }.getOrDefault(emptyList()).firstOrNull()?.activityInfo
+        val component = if (launchInfo != null) {
+            android.content.ComponentName(launchInfo.packageName, launchInfo.name)
+        } else {
+            val view = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"))
+                .setPackage(KeepPackages.CHROME_PACKAGE)
+            val viewInfo = runCatching {
+                pm.queryIntentActivities(view, PackageManager.MATCH_ALL)
+            }.getOrDefault(emptyList()).firstOrNull()?.activityInfo
+            viewInfo?.let { android.content.ComponentName(it.packageName, it.name) }
+        } ?: run {
+            Log.w(TAG, "preferChromeAsBrowser: no Chrome activity")
+            return
+        }
+
+        runCatching {
+            val filter = android.content.IntentFilter(Intent.ACTION_VIEW).apply {
+                addCategory(Intent.CATEGORY_DEFAULT)
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                addDataScheme("http")
+                addDataScheme("https")
+            }
+            dpm.addPersistentPreferredActivity(admin, filter, component)
+            Log.i(TAG, "Chrome set as default browser preferred: $component")
+            // Do not overwrite install status; only enrich detail when idle/missing.
+            val cur = prefs(app).getString(KEY_STATUS, null)
+            if (cur.isNullOrBlank() || cur == "missing" || cur == "silent_failed") {
+                persist(app, "browser_preferred", "既定ブラウザ候補に設定")
+            }
+        }.onFailure {
+            Log.w(TAG, "preferChromeAsBrowser failed", it)
+        }
     }
 
     fun persistFailure(context: Context, message: String?) {

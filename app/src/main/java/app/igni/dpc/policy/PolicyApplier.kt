@@ -28,7 +28,20 @@ data class ApplyResult(
     val screenTimeoutMs: Int? = null,
     val cameraPackages: List<String> = emptyList(),
     val darkMode: DarkModeStatus? = null,
-    val audio: AudioStatus? = null
+    val audio: AudioStatus? = null,
+    val googleApp: GoogleAppStatus? = null,
+    val homeLayout: HomeLayoutHelper.Status? = null,
+    val chromeDefaultBrowser: String? = null
+)
+
+/**
+ * Google app / search force-hide result for Admin UI.
+ */
+data class GoogleAppStatus(
+    val hidden: Int,
+    val uninstallRequested: Int,
+    val packages: List<String>,
+    val detail: String
 )
 
 /**
@@ -73,7 +86,10 @@ data class DarkModeStatus(
  * - Hide **system** apps that are not kept (cannot safely uninstall).
  * - Never claim HOME: clear this package's persistent preferred activities every apply
  *   so the stock Samsung / OEM launcher remains home (Igni HomeActivity is disabled).
- * - Keep Chrome / Settings / Play / Camera / LINE visible (explicit unhide).
+ * - Keep Chrome / Settings / Play / Camera / LINE / Igni visible (explicit unhide+enable).
+ * - Force-hide (+ uninstall if possible) Google app / search (not Chrome).
+ * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
+ * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
  * - Apply display defaults: Samsung Settings-reflecting dark theme + 30-minute timeout.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  *
@@ -146,6 +162,30 @@ class PolicyApplier(context: Context) {
         )
     }
 
+    /** Last Google-app force-hide snapshot (live probe of known packages). */
+    fun googleAppStatus(): GoogleAppStatus {
+        val present = mutableListOf<String>()
+        var hiddenCount = 0
+        for (pkg in KeepPackages.FORCE_HIDE_GOOGLE) {
+            if (!isPackageInstalled(pkg)) continue
+            present += pkg
+            val hidden = runCatching { dpm.isApplicationHidden(admin, pkg) }.getOrDefault(false)
+            if (hidden) hiddenCount++
+        }
+        return GoogleAppStatus(
+            hidden = hiddenCount,
+            uninstallRequested = 0,
+            packages = present,
+            detail = if (present.isEmpty()) {
+                "Googleアプリ系: 未インストール"
+            } else {
+                "検出 ${present.size} / 非表示 $hiddenCount — ${present.joinToString()}"
+            }
+        )
+    }
+
+    fun homeLayoutStatusText(): String = HomeLayoutHelper.lastStatusText(appContext)
+
     fun apply(): ApplyResult {
         if (!isDeviceOwner()) {
             Log.w(TAG, "Not device owner; skip apply")
@@ -202,24 +242,48 @@ class PolicyApplier(context: Context) {
             unhideKeepPackage(settingsPkg, hidden, "Settings")
         }
         unhideKeepPackage(KeepPackages.PLAY_STORE_PACKAGE, hidden, "Play Store")
+        // Igni itself: unhide + enable so AdminActivity LAUNCHER icon stays visible.
+        unhideKeepPackage(appContext.packageName, hidden, "Igni")
+        enablePackage(appContext.packageName)
+        enableComponent(
+            ComponentName(appContext.packageName, "app.igni.dpc.AdminActivity")
+        )
+        // Keep HomeActivity disabled (no custom HOME / dock).
+        disableComponent(
+            ComponentName(appContext.packageName, "app.igni.dpc.HomeActivity")
+        )
+
+        // Force-hide Google app / search (not Chrome) before general hide loop.
+        val googleStatus = forceHideGoogleApps(hidden)
 
         val installed = installedPackageNames()
         val launchable = launchablePackageNames()
 
-        // Safety: never leave keep-list packages hidden.
+        // Safety: never leave keep-list packages hidden; also enable them.
         for (pkg in installed) {
-            if (keep.shouldKeep(pkg) && dpm.isApplicationHidden(admin, pkg)) {
-                val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
-                if (restored) {
-                    hidden.remove(pkg)
-                    Log.i(TAG, "Unhid keep-list package $pkg")
+            if (keep.isForceHide(pkg)) continue
+            if (keep.shouldKeep(pkg)) {
+                if (dpm.isApplicationHidden(admin, pkg)) {
+                    val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
+                    if (restored) {
+                        hidden.remove(pkg)
+                        Log.i(TAG, "Unhid keep-list package $pkg")
+                    }
                 }
+                enablePackage(pkg)
             }
         }
 
         var newlyHidden = 0
         var uninstallRequested = 0
         for (pkg in installed) {
+            // Force-hide Google handled above; still skip hard-deny / keep.
+            if (keep.isForceHide(pkg)) {
+                // Ensure still hidden if forceHideGoogleApps raced.
+                runCatching { dpm.setApplicationHidden(admin, pkg, true) }
+                if (hidden.add(pkg)) newlyHidden++
+                continue
+            }
             // Hard deny + shouldKeep: never uninstall or hide these.
             if (keep.isHardDenyUninstall(pkg)) continue
             if (keep.shouldKeep(pkg)) continue
@@ -277,6 +341,12 @@ class PolicyApplier(context: Context) {
         // so stock Samsung One UI / OEM launcher handles HOME (no addPersistentPreferredActivity).
         clearIgniHomePreferred()
 
+        // Prefer Chrome as http/https VIEW handler (not Google app).
+        val chromeBrowser = preferChromeAsDefaultBrowser()
+
+        // Best-effort pin Shortcuts onto stock home (often needs user confirm — honest status).
+        val homeLayout = HomeLayoutHelper.applyBestEffortHomeLayout(appContext, cameras)
+
         // Display policies: dark mode + 30 min screen timeout (best-effort; never fail apply).
         val dark = applyDarkMode()
         val timeoutMs = applyScreenTimeout()
@@ -291,7 +361,9 @@ class PolicyApplier(context: Context) {
             "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden " +
                 "uninstallRequested=$uninstallRequested cameras=${cameras.size} " +
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
-                "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume}"
+                "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
+                "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
+                "chromeBrowser=$chromeBrowser home=${homeLayout.result}"
         )
         // Post-setup: LINE/Chrome missing → silent Uptodown only (async). Never open Play.
         LineInstaller.ensureLineInstalledAsync(appContext)
@@ -304,7 +376,10 @@ class PolicyApplier(context: Context) {
             screenTimeoutMs = timeoutMs,
             cameraPackages = cameras.sorted(),
             darkMode = dark,
-            audio = audio
+            audio = audio,
+            googleApp = googleStatus,
+            homeLayout = homeLayout,
+            chromeDefaultBrowser = chromeBrowser
         )
     }
 
@@ -973,9 +1048,180 @@ class PolicyApplier(context: Context) {
     }
 
     /**
+     * Force-hide Google app / search packages; uninstall when removable.
+     * Never touches Chrome / Play / Settings.
+     */
+    private fun forceHideGoogleApps(hidden: MutableSet<String>): GoogleAppStatus {
+        val touched = mutableListOf<String>()
+        var hiddenN = 0
+        var uninstN = 0
+        val notes = mutableListOf<String>()
+
+        val candidates = linkedSetOf<String>()
+        candidates.addAll(KeepPackages.FORCE_HIDE_GOOGLE)
+        // Also scan installed packages matching force-hide prefixes.
+        for (pkg in installedPackageNames()) {
+            if (keep.isForceHide(pkg)) candidates.add(pkg)
+        }
+
+        for (pkg in candidates) {
+            if (!isPackageInstalled(pkg)) continue
+            if (!keep.isForceHide(pkg)) continue
+            touched += pkg
+
+            // Clear any http/https preferred activity so Google is not the browser.
+            runCatching {
+                dpm.clearPackagePersistentPreferredActivities(admin, pkg)
+            }
+
+            val hideOk = runCatching {
+                dpm.setApplicationHidden(admin, pkg, true)
+            }.onFailure {
+                Log.w(TAG, "Failed to hide Google package $pkg", it)
+            }.getOrDefault(false)
+            if (hideOk) {
+                hiddenN++
+                hidden.add(pkg)
+                notes += "$pkg=hidden"
+                Log.i(TAG, "Force-hidden Google package $pkg")
+            } else {
+                notes += "$pkg=hide_fail"
+            }
+
+            // Disable as defense in depth (system apps often cannot uninstall).
+            runCatching {
+                appContext.packageManager.setApplicationEnabledSetting(
+                    pkg,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+                    0
+                )
+                notes += "$pkg=disabled"
+            }.onFailure {
+                Log.w(TAG, "Failed to disable Google package $pkg", it)
+            }
+
+            if (!isSystemOrUpdatedSystemApp(pkg)) {
+                if (requestSilentUninstall(pkg)) {
+                    uninstN++
+                    hidden.remove(pkg)
+                    notes += "$pkg=uninstall_req"
+                }
+            } else {
+                notes += "$pkg=system_keep_hidden"
+            }
+        }
+
+        val detail = if (touched.isEmpty()) {
+            "Googleアプリ系なし"
+        } else {
+            "非表示 $hiddenN / アンインストール要求 $uninstN — ${notes.joinToString("; ")}"
+        }
+        Log.i(TAG, "Google force-hide: $detail")
+        return GoogleAppStatus(
+            hidden = hiddenN,
+            uninstallRequested = uninstN,
+            packages = touched,
+            detail = detail
+        )
+    }
+
+    /**
+     * Prefer Chrome for http/https VIEW via DPM persistent preferred activity.
+     * Clears Google app preferred handlers first. Best-effort.
+     */
+    private fun preferChromeAsDefaultBrowser(): String {
+        if (!ChromeInstaller.isChromeInstalled(appContext)) {
+            Log.i(TAG, "Chrome not installed; skip default-browser prefer")
+            return "chrome_missing"
+        }
+        // Drop Google app as browser handler.
+        for (pkg in KeepPackages.FORCE_HIDE_GOOGLE) {
+            runCatching { dpm.clearPackagePersistentPreferredActivities(admin, pkg) }
+        }
+
+        val chromeLaunch = resolveChromeBrowserComponent()
+            ?: return "chrome_activity_missing"
+
+        return runCatching {
+            val filter = android.content.IntentFilter(Intent.ACTION_VIEW).apply {
+                addCategory(Intent.CATEGORY_DEFAULT)
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                addDataScheme("http")
+                addDataScheme("https")
+            }
+            dpm.addPersistentPreferredActivity(admin, filter, chromeLaunch)
+            Log.i(TAG, "Set Chrome as persistent preferred for http/https: $chromeLaunch")
+            "ok:$chromeLaunch"
+        }.onFailure {
+            Log.w(TAG, "preferChromeAsDefaultBrowser failed", it)
+        }.getOrElse { "fail:${it.javaClass.simpleName}" }
+    }
+
+    private fun resolveChromeBrowserComponent(): ComponentName? {
+        val pm = appContext.packageManager
+        // Prefer MAIN/LAUNCHER of Chrome (opens browser UI).
+        val launcher = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setPackage(KeepPackages.CHROME_PACKAGE)
+        val launchInfo = runCatching {
+            pm.queryIntentActivities(launcher, PackageManager.MATCH_ALL)
+        }.getOrDefault(emptyList()).firstOrNull()?.activityInfo
+        if (launchInfo != null) {
+            return ComponentName(launchInfo.packageName, launchInfo.name)
+        }
+        // Fallback: VIEW http handler inside Chrome.
+        val view = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://example.com"))
+            .setPackage(KeepPackages.CHROME_PACKAGE)
+        val viewInfo = runCatching {
+            pm.queryIntentActivities(view, PackageManager.MATCH_ALL)
+        }.getOrDefault(emptyList()).firstOrNull()?.activityInfo
+        return viewInfo?.let { ComponentName(it.packageName, it.name) }
+    }
+
+    private fun enablePackage(packageName: String) {
+        runCatching {
+            appContext.packageManager.setApplicationEnabledSetting(
+                packageName,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                0
+            )
+            Log.i(TAG, "Enabled package $packageName")
+        }.onFailure {
+            Log.w(TAG, "enablePackage($packageName) failed", it)
+        }
+    }
+
+    private fun enableComponent(component: ComponentName) {
+        runCatching {
+            appContext.packageManager.setComponentEnabledSetting(
+                component,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            Log.i(TAG, "Enabled component $component")
+        }.onFailure {
+            Log.w(TAG, "enableComponent($component) failed", it)
+        }
+    }
+
+    private fun disableComponent(component: ComponentName) {
+        runCatching {
+            appContext.packageManager.setComponentEnabledSetting(
+                component,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP
+            )
+            Log.i(TAG, "Disabled component $component")
+        }.onFailure {
+            Log.w(TAG, "disableComponent($component) failed", it)
+        }
+    }
+
+    /**
      * Ensure this DPC is **not** the default HOME.
      * Clears package persistent preferred activities every apply.
-     * Does **not** call [DevicePolicyManager.addPersistentPreferredActivity].
+     * Does **not** call [DevicePolicyManager.addPersistentPreferredActivity] for HOME.
+     * (Browser http/https preferred for Chrome is set separately.)
      */
     private fun clearIgniHomePreferred() {
         runCatching {

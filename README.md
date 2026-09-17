@@ -21,7 +21,8 @@
 - カメラ（静的 OEM リスト + **動的検出**: `IMAGE_CAPTURE` / `STILL_IMAGE_CAMERA` / `VIDEO_CAMERA` ハンドラ、および packageName に `camera` を含む MAIN/LAUNCHER アプリ。適用時に必ず unhide）
 - `com.android.chrome`（Chrome；安定版が無い場合のみ beta）
 - `jp.naver.line.android`（LINE）
-- この DPC 自身（`AdminActivity` が LAUNCHER のみ。`HomeActivity` は無効・HOME にしない）
+- この DPC 自身 `app.igni.dpc`（`AdminActivity` が LAUNCHER。`HomeActivity` は無効・HOME にしない）
+- **非表示対象**: `com.google.android.googlequicksearchbox` など Google アプリ／検索／Assistant（Chrome の代替にしない）
 - SystemUI、IME など端末動作に必要なパッケージ
 
 **隠さない安全リスト（例）**
@@ -37,8 +38,9 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - マニフェスト: `HomeActivity` は **無効**（`enabled=false`、HOME/DEFAULT フィルタなし）
 - `AdminActivity` のみ `MAIN` + `LAUNCHER`（管理・再適用・更新用）
 - `PolicyApplier.apply()` のたび: `clearPackagePersistentPreferredActivities(admin, packageName)` のみ。**`addPersistentPreferredActivity` は呼ばない**
-- ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・LINE・カメラがランチャーに残る
-- Chrome: 適用時に明示 unhide。lock-task 既定オフ。カスタムホームによるブラウザ intent 横取りなし
+- ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・LINE・カメラ・イグニがランチャーに残る
+- Chrome: 適用時に明示 unhide + http/https 既定ハンドラ候補。Google アプリは force-hide。lock-task 既定オフ。カスタムホームなし
+- ホーム1ページ目の自動ピンはベストエフォート（多くの OEM では確認必須 → Admin に正直なステータス）
 - LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。未インストール時は適用後に Uptodown 最新（APK/XAPK）→ Play フォールバック（v1.0.13）
 
 ## カメラ保護（v1.0.4）
@@ -170,7 +172,19 @@ Chrome / LINE / 更新 / 標準ホーム / ダーク / 音量ポリシーは変�
 - versionCode **17** / versionName **1.0.16**
 
 
+## v1.0.19（Googleアプリ非表示 + Chrome既定 + Igniを許可リスト）
+
+Sense3 向け: Google アプリが Chrome の代わりに出る問題を解消。標準ホームのまま。
+
+- Google アプリ／検索／Assistant を **強制非表示**（可能ならアンインストール）。Chrome の代替にしない
+- 許可リストに **`app.igni.dpc`（イグニ）** を明示。適用時に unhide + enable（`AdminActivity` LAUNCHER）
+- Chrome: 適用／インストール後に DPM で http/https の persistent preferred を Chrome に（ベストエフォート）
+- ホーム1ページ目へのピンは `ShortcutManager.requestPinShortcut` のベストエフォートのみ。**サイレント保証なし**（OEM確認UIが多い）。カスタム HOME／ドックは再導入しない
+- 適用・起動・compliance から Play を自動で開かない（v1.0.18 維持）
+- versionCode **20** / versionName **1.0.19**
+
 ## v1.0.18（セットアップ中に Play を開かない）
+
 
 **Critical:** QR / Device Owner セットアップやポリシー再適用中に Google Play ログイン画面へ飛んでホーム到達を妨げる問題を修正。
 

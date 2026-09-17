@@ -8,6 +8,8 @@ import androidx.core.view.isVisible
 import app.igni.dpc.databinding.ActivityAdminBinding
 import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.DarkModeStatus
+import app.igni.dpc.policy.GoogleAppStatus
+import app.igni.dpc.policy.HomeLayoutHelper
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.PolicyApplier
@@ -126,6 +128,20 @@ class AdminActivity : AppCompatActivity() {
         binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
+        updateGoogleLabel(applier.googleAppStatus())
+        binding.homeLayoutStatus.text = applier.homeLayoutStatusText()
+        val chromeOk = ChromeInstaller.isChromeInstalled(this)
+        binding.chromeBrowserStatus.text = getString(
+            R.string.chrome_browser_status_value,
+            if (chromeOk) "利用可（適用時に http/https 優先設定を試行）" else "未インストール"
+        )
+    }
+
+    private fun updateGoogleLabel(status: GoogleAppStatus) {
+        binding.googleAppStatus.text = getString(
+            R.string.google_app_status_value,
+            status.detail
+        )
     }
 
     private fun updateTimeoutLabel(timeoutMs: Int?) {
@@ -205,6 +221,16 @@ class AdminActivity : AppCompatActivity() {
                 result.audio?.let { updateAudioLabel(it) }
                 updateCameraLabel(result.cameraPackages)
                 result.darkMode?.let { updateDarkModeLabel(it) }
+                result.googleApp?.let { updateGoogleLabel(it) }
+                result.homeLayout?.let {
+                    binding.homeLayoutStatus.text = HomeLayoutHelper.lastStatusText(this)
+                }
+                result.chromeDefaultBrowser?.let { browser ->
+                    binding.chromeBrowserStatus.text = getString(
+                        R.string.chrome_browser_status_value,
+                        browser
+                    )
+                }
                 val message = if (result.success) {
                     getString(
                         R.string.toast_reapplied,
