@@ -1,6 +1,6 @@
 # イグニ DPC（Device Policy Controller）
 
-完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**ドック型ホーム**（設定・Playストア・Chrome・カメラ）を使い、許可リスト外について次を適用します。
+完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**端末標準ホーム（Samsung One UI 等）**のまま、許可リスト外について次を適用します。設定・Play・Chrome・カメラは表示を維持します。
 
 - **ユーザーアプリ**（非システム）: Device Owner として `PackageInstaller.uninstall` で**サイレントアンインストール**（容量を解放）
 - **システムアプリ**: アンインストールせず `DevicePolicyManager.setApplicationHidden(true)` で**非表示のみ**
@@ -20,7 +20,7 @@
 - `com.android.vending`（Play ストア）
 - カメラ（静的 OEM リスト + **動的検出**: `IMAGE_CAPTURE` / `STILL_IMAGE_CAMERA` / `VIDEO_CAMERA` ハンドラ、および packageName に `camera` を含む MAIN/LAUNCHER アプリ。適用時に必ず unhide）
 - `com.android.chrome`（Chrome；安定版が無い場合のみ beta）
-- この DPC 自身（`HomeActivity` が HOME。`AdminActivity` はホームの「管理」から開く）
+- この DPC 自身（`AdminActivity` が LAUNCHER のみ。`HomeActivity` は無効・HOME にしない）
 - SystemUI、IME など端末動作に必要なパッケージ
 
 **隠さない安全リスト（例）**
@@ -29,17 +29,15 @@ SystemUI、PackageInstaller、PermissionController、Google Play 開発者サー
 
 Lock Task（キオスク）は **デフォルトオフ** です。有効にする場合は `app/build.gradle.kts` の `ENABLE_LOCK_TASK` を `true` にしてください。
 
-## ホーム画面（v1.0.6 ドック型）
+## ホーム画面（v1.0.10: 標準ランチャー）
 
-**通常のホームに見えるドック UI** を `HomeActivity` で提供します（管理パネル風の 2×2 タイル／大きな「イグニ」バナーは使いません）。
+**Igni を HOME にしない**（Galaxy A23 等でドック／管理ホームに固定されて Chrome が使えなくなる問題の修正）。
 
-- 全画面の暗いニュートラル背景（グラデーション）＋**画面下部の横一列ドック**（左→右固定）:
-  1. 設定　2. Playストア　3. Chrome　4. カメラ
-- アイコンは可能なら `PackageManager` の実アプリアイコン。日本語ラベル付き。ステータスバーは表示したまま（immersive 固定オフ）
-- 端の小さな「管理」または空領域の長押しで `AdminActivity`（再適用）
-- マニフェスト: `HomeActivity` に `MAIN` + `HOME` + `DEFAULT`。`AdminActivity` に `LAUNCHER` は付けない
-- `PolicyApplier.apply()`: 自パッケージの `clearPackagePersistentPreferredActivities` のあと `addPersistentPreferredActivity` でこの Home を再設定
-- 許可リスト外のユーザーアプリ・アンインストール／システム非表示は v1.0.5 と同じ
+- マニフェスト: `HomeActivity` は **無効**（`enabled=false`、HOME/DEFAULT フィルタなし）
+- `AdminActivity` のみ `MAIN` + `LAUNCHER`（管理・再適用・更新用）
+- `PolicyApplier.apply()` のたび: `clearPackagePersistentPreferredActivities(admin, packageName)` のみ。**`addPersistentPreferredActivity` は呼ばない**
+- ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・カメラがランチャーに残る
+- Chrome: 適用時に明示 unhide。lock-task 既定オフ。カスタムホームによるブラウザ intent 横取りなし
 
 ## カメラ保護（v1.0.4）
 
@@ -95,7 +93,14 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 5. 書き込み後: `setApplicationNightMode`（あれば）＋ Samsung / night 系ブロードキャスト
 6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
 
-v1.0.8 のマナーモード＋音量 0、ドック Home、更新ボタン、アンインストールは維持しています。
+v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
+
+## v1.0.10（Galaxy A23 UX）
+
+- **標準ホーム**: Igni HOME を完全撤廃。再適用で persistent preferred をクリアし、Samsung ランチャーに戻す
+- **Chrome 利用可**: `com.android.chrome` を必ず unhide / 非アンインストール。lock-task なし
+- **ダーク（Settings 反映）**: 優先で `Settings.System.display_night_theme=1` を書き込み、読み戻しが 1 であることを管理画面に表示。併せて UiModeManager / `ui_night_mode=2` / DPM 反射設定
+- versionCode **11** / versionName **1.0.10**
 
 ## 音声ポリシー（v1.0.8）
 
@@ -224,10 +229,10 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 
 ## 管理画面
 
-ドックホームの「管理」（または空領域の長押し）から `AdminActivity` を開くと:
+ランチャーの「イグニ」アイコン（`AdminActivity`）から開くと:
 
 - Device Owner の有効 / 無効
-- **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（ドック Home 再設定・ダーク強化・タイムアウト再設定・マナー／音量0 含む）
+- **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（Igni HOME 解除・Chrome unhide・ダーク強化・タイムアウト再設定・マナー／音量0 含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
 - 現在のバージョン（versionName / versionCode）と更新ステータス

@@ -43,27 +43,27 @@
         android:theme="@style/Theme.Igni"
         tools:targetApi="35">
 
-        <!-- Dock-style dedicated HOME: 設定 / Playストア / Chrome / カメラ -->
+        <!-- Legacy dock HomeActivity: DISABLED — stock Samsung/launcher is HOME (v1.0.10+).
+             Kept in APK but no HOME/DEFAULT filters and enabled=false so it cannot become home. -->
         <activity
             android:name=".HomeActivity"
-            android:enabled="true"
+            android:enabled="false"
             android:excludeFromRecents="true"
-            android:exported="true"
+            android:exported="false"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
-            android:theme="@style/Theme.Igni.Home">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+            android:theme="@style/Theme.Igni.Home" />
 
-        <!-- Admin / re-apply — open from Home 「管理」 (no LAUNCHER icon). -->
+        <!-- Admin / re-apply — LAUNCHER only for management (stock home shows this icon). -->
         <activity
             android:name=".AdminActivity"
             android:exported="true"
-            android:launchMode="singleTop" />
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <!-- Android 10+ QR / zero-touch: choose fully managed device. -->
         <activity

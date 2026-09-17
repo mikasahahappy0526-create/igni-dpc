@@ -7,7 +7,6 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.media.AudioManager
@@ -16,7 +15,6 @@ import android.provider.Settings
 import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
-import app.igni.dpc.HomeActivity
 import app.igni.dpc.UninstallStatusReceiver
 
 data class ApplyResult(
@@ -62,8 +60,10 @@ data class DarkModeStatus(
  * Idempotent Device Owner policy:
  * - Uninstall **user** apps that are not on the keep / allowlist (frees storage).
  * - Hide **system** apps that are not kept (cannot safely uninstall).
- * - Prefer dock-style [HomeActivity] as HOME via persistent preferred activity.
- * - Apply display defaults: stronger dark mode + 30-minute screen timeout.
+ * - Never claim HOME: clear this package's persistent preferred activities every apply
+ *   so the stock Samsung / OEM launcher remains home (Igni HomeActivity is disabled).
+ * - Keep Chrome / Settings / Play / Camera visible (explicit unhide).
+ * - Apply display defaults: Samsung Settings-reflecting dark theme + 30-minute timeout.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
@@ -175,6 +175,14 @@ class PolicyApplier(context: Context) {
         }
         Log.i(TAG, "Camera unhide pass done: unhidden=$camerasUnhidden kept=${cameras.size}")
 
+        // Chrome must stay usable: never leave it hidden; drop from HiddenStore.
+        unhideKeepPackage(KeepPackages.CHROME_PACKAGE, hidden, "Chrome")
+        unhideKeepPackage(KeepPackages.CHROME_BETA_PACKAGE, hidden, "Chrome beta")
+        for (settingsPkg in KeepPackages.SETTINGS_PACKAGES) {
+            unhideKeepPackage(settingsPkg, hidden, "Settings")
+        }
+        unhideKeepPackage(KeepPackages.PLAY_STORE_PACKAGE, hidden, "Play Store")
+
         val installed = installedPackageNames()
         val launchable = launchablePackageNames()
 
@@ -242,8 +250,9 @@ class PolicyApplier(context: Context) {
             }.onFailure { Log.w(TAG, "setLockTaskPackages failed", it) }
         }
 
-        // Prefer dock HomeActivity as default HOME (after clearing our prior prefs).
-        setDedicatedHomePreferred()
+        // Never be HOME: clear any prior persistent preferred activities for this package
+        // so stock Samsung One UI / OEM launcher handles HOME (no addPersistentPreferredActivity).
+        clearIgniHomePreferred()
 
         // Display policies: dark mode + 30 min screen timeout (best-effort; never fail apply).
         val dark = applyDarkMode()
@@ -487,9 +496,10 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Stronger system-wide night mode for OEM devices (Sharp / Samsung One UI Galaxy A23, etc.).
-     * Also tries Samsung `display_night_theme=1` and reflective DPM Secure/System settings.
-     * Failures are logged; apply() still succeeds. Result is persisted for Admin UI.
+     * System-wide night / dark mode, with Samsung One UI Settings-reflecting dark ON.
+     * Primary: Settings.System display_night_theme=1 with read-back verification.
+     * Also: UiModeManager MODE_NIGHT_YES, setNightModeActivated(true), Secure ui_night_mode=2,
+     * reflective DPM setSystemSetting / setSecureSetting. Failures logged; apply() still succeeds.
      */
     private fun applyDarkMode(): DarkModeStatus {
         val sdk = Build.VERSION.SDK_INT
@@ -508,7 +518,29 @@ class PolicyApplier(context: Context) {
         val notes = mutableListOf<String>()
         var anySuccess = false
 
-        // 1) Standard UiModeManager + Secure ui_night_mode=2
+        // 1) PRIMARY (Samsung One UI Settings → Dark mode): display_night_theme = 1
+        if (putSystemInt(SYSTEM_DISPLAY_NIGHT_THEME, 1)) {
+            anySuccess = true
+            notes += "system.display_night_theme=1"
+        } else {
+            notes += "system.display_night_theme=fail"
+        }
+        // Immediate verify; retry once via put + DPM if Settings UI would still show off.
+        var nightThemeProbe = readSystemInt(SYSTEM_DISPLAY_NIGHT_THEME)
+        if (nightThemeProbe != 1) {
+            notes += "display_night_theme_probe=${nightThemeProbe ?: "null"}→retry"
+            putSystemInt(SYSTEM_DISPLAY_NIGHT_THEME, 1)
+            dpmSetSystemSetting(SYSTEM_DISPLAY_NIGHT_THEME, "1")
+            dpmSetSecureSetting(SYSTEM_DISPLAY_NIGHT_THEME, "1")
+            // Some One UI builds also mirror dark ON via these Settings-facing keys.
+            putSystemInt("dark_mode", 1)
+            putSecureInt("dark_mode", 1)
+            putSystemInt("theme_mode", 1)
+            putSecureInt("theme_mode", 1)
+            nightThemeProbe = readSystemInt(SYSTEM_DISPLAY_NIGHT_THEME)
+        }
+
+        // 2) Standard UiModeManager + Secure ui_night_mode=2
         runCatching {
             uiMode?.setNightMode(UiModeManager.MODE_NIGHT_YES)
             anySuccess = true
@@ -543,15 +575,7 @@ class PolicyApplier(context: Context) {
             notes += "secure.ui_night_mode=fail"
         }
 
-        // 2) Samsung One UI classic: Settings.System display_night_theme = 1
-        if (putSystemInt(SYSTEM_DISPLAY_NIGHT_THEME, 1)) {
-            anySuccess = true
-            notes += "system.display_night_theme=1"
-        } else {
-            notes += "system.display_night_theme=fail"
-        }
-
-        // 3) Known-safe OEM keys: dark_theme / theme_mode / night_mode (1 or 2 = on)
+        // 3) Additional OEM keys: dark_theme / theme_mode / night_mode (1 or 2 = on)
         val oemAttempts = listOf(
             SettingAttempt("secure", "dark_theme", 1),
             SettingAttempt("system", "dark_theme", 1),
@@ -579,7 +603,7 @@ class PolicyApplier(context: Context) {
             // Failures already logged inside put*; skip adding every miss to Admin detail.
         }
 
-        // 4) Reflective DPM setSystemSetting / setSecureSetting for key night settings
+        // 4) Reflective DPM setSystemSetting / setSecureSetting (display_night_theme + ui_night_mode)
         if (dpmSetSystemSetting(SYSTEM_DISPLAY_NIGHT_THEME, "1")) {
             anySuccess = true
             notes += "dpm.setSystemSetting.display_night_theme=1"
@@ -605,7 +629,7 @@ class PolicyApplier(context: Context) {
             notes += "dpm.setSecureSetting.display_night_theme=fail"
         }
 
-        // 5) setApplicationNightMode if present; soft Samsung / night broadcasts
+        // 5) setApplicationNightMode if present; Samsung / night broadcasts (Settings listeners)
         runCatching {
             if (uiMode != null) {
                 val m = UiModeManager::class.java.getMethod(
@@ -663,18 +687,25 @@ class PolicyApplier(context: Context) {
             }
         }
 
-        // 6) Admin status: display_night_theme read-back after writes
+        // 6) Admin status: display_night_theme read-back (Settings → Dark mode ON when == 1)
         val nightTheme = readSystemInt(SYSTEM_DISPLAY_NIGHT_THEME)
         notes += if (nightTheme != null) {
             "display_night_theme_read=$nightTheme"
         } else {
             "display_night_theme_read=null"
         }
+        if (nightTheme == 1) {
+            anySuccess = true
+            notes += "settings_dark_theme=ON (display_night_theme=1)"
+        } else {
+            notes += "settings_dark_theme=OFF_OR_UNKNOWN (want display_night_theme=1 for One UI Settings)"
+        }
         Log.i(TAG, "Samsung display_night_theme read-back=$nightTheme (want 1)")
 
         val result = when {
             !likely && !anySuccess -> "unsupported"
             !likely && anySuccess -> "success" // best-effort on API < 29
+            nightTheme == 1 -> "success"
             anySuccess -> "success"
             else -> "fail"
         }
@@ -840,28 +871,41 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Make [HomeActivity] the default HOME via Device Owner persistent preferred activity.
-     * Clears our package's prior prefs first, then sets Home again.
+     * Ensure this DPC is **not** the default HOME.
+     * Clears package persistent preferred activities every apply.
+     * Does **not** call [DevicePolicyManager.addPersistentPreferredActivity].
      */
-    private fun setDedicatedHomePreferred() {
+    private fun clearIgniHomePreferred() {
         runCatching {
             dpm.clearPackagePersistentPreferredActivities(admin, appContext.packageName)
-            Log.i(TAG, "Cleared persistent preferred activities for ${appContext.packageName}")
+            Log.i(TAG, "Cleared persistent preferred activities for ${appContext.packageName} (stock launcher HOME)")
         }.onFailure {
             Log.w(TAG, "clearPackagePersistentPreferredActivities failed", it)
         }
+    }
 
-        val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            addCategory(Intent.CATEGORY_DEFAULT)
+    /** Explicitly unhide a keep-list package and remove it from HiddenStore. */
+    private fun unhideKeepPackage(pkg: String, hidden: MutableSet<String>, label: String) {
+        if (!isPackageInstalled(pkg)) return
+        val wasHidden = runCatching { dpm.isApplicationHidden(admin, pkg) }.getOrDefault(false)
+        val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
+        if (hidden.remove(pkg)) {
+            Log.i(TAG, "Removed $label package $pkg from HiddenStore")
         }
-        val homeComponent = ComponentName(appContext, HomeActivity::class.java)
-        runCatching {
-            dpm.addPersistentPreferredActivity(admin, homeFilter, homeComponent)
-            Log.i(TAG, "Preferred HOME set to $homeComponent")
-        }.onFailure {
-            Log.w(TAG, "addPersistentPreferredActivity failed", it)
+        if (wasHidden && restored) {
+            Log.i(TAG, "Unhid $label package $pkg")
+        } else if (!wasHidden) {
+            Log.i(TAG, "Kept $label package $pkg (already visible)")
+        } else {
+            Log.w(TAG, "Failed to unhide $label package $pkg (restored=$restored)")
         }
+    }
+
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return runCatching {
+            appContext.packageManager.getPackageInfo(packageName, 0)
+            true
+        }.getOrDefault(false)
     }
 
     companion object {
