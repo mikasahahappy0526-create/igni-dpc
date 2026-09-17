@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="igni_orange">#FFFF6A00</color>
+    <color name="igni_orange_dim">#FFB34700</color>
+    <color name="igni_bg">#FF140F0C</color>
+    <color name="igni_surface">#FF241C17</color>
+    <color name="igni_surface_high">#FF322720</color>
+    <color name="igni_text">#FFFFF6EE</color>
+    <color name="igni_muted">#FFC9B7AA</color>
+    <color name="igni_ok">#FF8EE37A</color>
+    <color name="igni_bad">#FFFF7A7A</color>
+    <color name="igni_outline">#FF5A4336</color>
+    <color name="ic_launcher_background">#FFFF6A00</color>
+</resources>

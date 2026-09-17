@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Igni" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/igni_orange</item>
+        <item name="colorOnPrimary">@color/igni_bg</item>
+        <item name="colorSecondary">@color/igni_orange_dim</item>
+        <item name="colorSurface">@color/igni_surface</item>
+        <item name="colorOnSurface">@color/igni_text</item>
+        <item name="android:statusBarColor">@color/igni_bg</item>
+        <item name="android:navigationBarColor">@color/igni_bg</item>
+        <item name="android:windowBackground">@color/igni_bg</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Igni.Dialog</item>
+    </style>
+
+    <style name="Theme.Igni.Provisioning" parent="Theme.Igni">
+        <item name="android:windowBackground">@color/igni_bg</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+    <style name="ThemeOverlay.Igni.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorPrimary">@color/igni_orange</item>
+        <item name="colorSurface">@color/igni_surface</item>
+        <item name="colorOnSurface">@color/igni_text</item>
+    </style>
+</resources>

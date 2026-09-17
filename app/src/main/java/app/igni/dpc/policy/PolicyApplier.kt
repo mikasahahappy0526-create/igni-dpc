@@ -1,0 +1,126 @@
+package app.igni.dpc.policy
+
+import android.app.admin.DevicePolicyManager
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.util.Log
+import app.igni.dpc.AdminReceiver
+import app.igni.dpc.BuildConfig
+
+data class ApplyResult(
+    val success: Boolean,
+    val hiddenCount: Int,
+    val newlyHidden: Int = 0,
+    val message: String? = null
+)
+
+/**
+ * Idempotent Device Owner policy: hide launchable apps except the product allowlist
+ * and a safety keep-list. Hide is preferred over uninstall.
+ *
+ * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
+ */
+class PolicyApplier(context: Context) {
+
+    private val appContext = context.applicationContext
+    private val dpm = appContext.getSystemService(DevicePolicyManager::class.java)
+    private val admin = AdminReceiver.componentName(appContext)
+    private val store = HiddenStore(appContext)
+    private val keep = KeepPackages(appContext)
+
+    fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(appContext.packageName)
+
+    fun hiddenCount(): Int = store.snapshot().size
+
+    fun hasApplied(): Boolean = store.hasApplied()
+
+    fun allowlistForDisplay(): List<String> = keep.describeKeepReasons()
+
+    fun apply(): ApplyResult {
+        if (!isDeviceOwner()) {
+            Log.w(TAG, "Not device owner; skip apply")
+            return ApplyResult(success = false, hiddenCount = store.snapshot().size, message = "not_device_owner")
+        }
+
+        runCatching { dpm.setUninstallBlocked(admin, appContext.packageName, true) }
+
+        // Safety: never leave keep-list packages hidden.
+        for (pkg in installedPackageNames()) {
+            if (keep.shouldKeep(pkg) && dpm.isApplicationHidden(admin, pkg)) {
+                val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
+                if (restored) {
+                    Log.i(TAG, "Unhid keep-list package $pkg")
+                }
+            }
+        }
+
+        val hidden = store.mutableCopy()
+        var newlyHidden = 0
+        for (pkg in launchablePackageNames()) {
+            if (keep.shouldKeep(pkg)) continue
+            val ok = runCatching {
+                dpm.setApplicationHidden(admin, pkg, true)
+            }.onFailure {
+                Log.w(TAG, "Failed to hide $pkg", it)
+            }.getOrDefault(false)
+            if (ok) {
+                if (hidden.add(pkg)) newlyHidden++
+                Log.i(TAG, "Hidden $pkg")
+            }
+        }
+
+        // Optional kiosk allowlist. Default false — hide-only matches “ホームに設定とPlayだけ”.
+        if (BuildConfig.ENABLE_LOCK_TASK) {
+            runCatching {
+                dpm.setLockTaskPackages(
+                    admin,
+                    arrayOf(
+                        "com.android.settings",
+                        "com.android.vending",
+                        appContext.packageName
+                    )
+                )
+            }.onFailure { Log.w(TAG, "setLockTaskPackages failed", it) }
+        }
+
+        store.replace(hidden)
+        store.markApplied()
+        Log.i(TAG, "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden")
+        return ApplyResult(success = true, hiddenCount = hidden.size, newlyHidden = newlyHidden)
+    }
+
+    fun unhideAll(): Int {
+        if (!isDeviceOwner()) return 0
+        val hidden = store.snapshot()
+        var restored = 0
+        for (pkg in hidden) {
+            val ok = runCatching { dpm.setApplicationHidden(admin, pkg, false) }
+                .onFailure { Log.w(TAG, "Failed to unhide $pkg", it) }
+                .getOrDefault(false)
+            if (ok) restored++
+        }
+        store.replace(emptySet())
+        Log.i(TAG, "Unhid $restored / ${hidden.size} packages")
+        return restored
+    }
+
+    private fun launchablePackageNames(): Set<String> {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val infos = appContext.packageManager.queryIntentActivities(intent, MATCH_FLAGS)
+        return infos.mapNotNull { it.activityInfo?.packageName }.toSet()
+    }
+
+    private fun installedPackageNames(): Set<String> {
+        val apps = appContext.packageManager.getInstalledApplications(MATCH_FLAGS)
+        return apps.map { it.packageName }.toSet()
+    }
+
+    companion object {
+        private const val TAG = "IgniPolicy"
+        private const val MATCH_FLAGS =
+            PackageManager.MATCH_DISABLED_COMPONENTS or
+                PackageManager.MATCH_UNINSTALLED_PACKAGES or
+                PackageManager.MATCH_ALL
+    }
+}
