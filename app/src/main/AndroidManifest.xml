@@ -150,5 +150,14 @@
                 <action android:name="app.igni.dpc.action.INSTALL_STATUS" />
             </intent-filter>
         </receiver>
+
+        <!-- PackageInstaller silent LINE install status. -->
+        <receiver
+            android:name=".LineInstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.igni.dpc.action.LINE_INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

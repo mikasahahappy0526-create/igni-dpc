@@ -52,4 +52,9 @@
     <string name="update_note">同じ署名キーでビルドされた GitHub Releases の最新 APK を、Device Owner として自己更新します。工場出荷リセットや QR の再読み取りは不要です。</string>
     <string name="toast_update_available">更新があります: %1$s</string>
     <string name="toast_update_installing">インストールを開始しました</string>
+
+    <string name="btn_install_line">LINEを入れる</string>
+    <string name="line_status_idle">LINE インストール: 未試行</string>
+    <string name="line_install_note">ポリシー適用後、LINE 未インストールならサイレント APK（短いミラーの line.apk）を試し、無ければ Play ストアの LINE ページを開きます。</string>
+    <string name="toast_line_install_started">LINE インストールを開始しました</string>
 </resources>

@@ -8,6 +8,7 @@ import androidx.core.view.isVisible
 import app.igni.dpc.databinding.ActivityAdminBinding
 import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.DarkModeStatus
+import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.PolicyApplier
 import app.igni.dpc.update.AppSelfUpdater
 import app.igni.dpc.update.AppUpdateChecker
@@ -44,6 +45,7 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUnhide.setOnClickListener { confirmUnhide() }
         binding.btnCheckUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallUpdate.setOnClickListener { installUpdate() }
+        binding.btnInstallLine.setOnClickListener { installLine() }
 
         maybeReapplyAfterVersionChange()
 
@@ -117,6 +119,8 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUnhide.isEnabled = isOwner && !busy
         binding.btnCheckUpdate.isEnabled = !updateBusy.get()
         binding.btnInstallUpdate.isEnabled = !updateBusy.get() && pendingRelease != null
+        binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
+        binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
     }
 
     private fun updateTimeoutLabel(timeoutMs: Int?) {
@@ -327,6 +331,17 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+    private fun installLine() {
+        binding.lineInstallStatus.text = "LINE インストール: 開始…"
+        Toast.makeText(this, R.string.toast_line_install_started, Toast.LENGTH_SHORT).show()
+        executor.execute {
+            LineInstaller.ensureLineInstalled(this)
+            runOnUiThread {
+                binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
+            }
+        }
+    }
+
     private fun setBusy(busy: Boolean) {
         binding.progress.isVisible = busy
         val owner = PolicyApplier(this).isDeviceOwner()
@@ -335,6 +350,7 @@ class AdminActivity : AppCompatActivity() {
         binding.btnCheckUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallUpdate.isEnabled =
             !busy && !updateBusy.get() && pendingRelease != null
+        binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
     }
 
     companion object {

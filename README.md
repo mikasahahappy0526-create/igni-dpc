@@ -39,7 +39,7 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - `PolicyApplier.apply()` のたび: `clearPackagePersistentPreferredActivities(admin, packageName)` のみ。**`addPersistentPreferredActivity` は呼ばない**
 - ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・LINE・カメラがランチャーに残る
 - Chrome: 適用時に明示 unhide。lock-task 既定オフ。カスタムホームによるブラウザ intent 横取りなし
-- LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。Play ストアからインストール後も再適用で保持
+- LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。未インストール時は適用後にサイレント APK → Play フォールバック（v1.0.12）
 
 ## カメラ保護（v1.0.4）
 
@@ -109,6 +109,19 @@ v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインスト�
 - **LINE 利用可**: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。Play ストアからインストールした LINE は再適用後も保持
 - **標準ホーム維持**: Igni HOME は使わず、ドック変更なし
 - versionCode **12** / versionName **1.0.11**
+
+## v1.0.12（LINE 自動インストール）
+
+ポリシー適用後、LINE が未インストールならバックグラウンドでインストールを試みます（`apply()` は待たない）。
+
+1. **サイレント**: `BuildConfig.LINE_APK_URL`（既定: `https://github.com/mikasahahappy0526-create/i/releases/download/1/line.apk`）から APK を HTTPS 取得し、Device Owner の `PackageInstaller`（`MODE_FULL_INSTALL`）でインストール
+2. **フォールバック**: ダウンロード／インストール失敗（404・ネットワーク等）時は Play ストアの LINE ページを開く（`market://details?id=jp.naver.line.android`、失敗時は HTTPS）
+3. 管理画面に「**LINEを入れる**」ボタンと直近ステータスを表示（手動で同じフロー）
+4. 許可リスト＋明示 unhide（v1.0.11）はそのまま。標準ホーム・ダーク・音量・自己更新は変更なし
+
+**注意**: このリポジトリ／タスクでは LINE APK を再配布しません。サイレントインストールには、短いミラー `mikasahahappy0526-create/i` の release `1` にユーザーが合法に用意した `line.apk` を置く必要があります。無い場合は常に Play が開きます。
+
+- versionCode **13** / versionName **1.0.12**
 
 ## 音声ポリシー（v1.0.8）
 
@@ -243,6 +256,7 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（Igni HOME 解除・Chrome unhide・ダーク強化・タイムアウト再設定・マナー／音量0 含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
+- **LINEを入れる**（v1.0.12+）— サイレント APK（ミラーの `line.apk`）を試し、無ければ Play ストアの LINE ページを開く。直近ステータスを表示
 - 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - **音声**: 着信モード（SILENT/VIBRATE/…）とメディア／着信音量
@@ -268,8 +282,10 @@ app/src/main/java/app/igni/dpc/
   HomeActivity.kt
   AdminActivity.kt
   InstallStatusReceiver.kt
+  LineInstallStatusReceiver.kt
   policy/PolicyApplier.kt
   policy/KeepPackages.kt
+  line/LineInstaller.kt
   update/AppUpdateChecker.kt
   update/AppSelfUpdater.kt
   update/SemVer.kt

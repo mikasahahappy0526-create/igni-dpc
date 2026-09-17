@@ -16,6 +16,7 @@ import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
 import app.igni.dpc.UninstallStatusReceiver
+import app.igni.dpc.line.LineInstaller
 
 data class ApplyResult(
     val success: Boolean,
@@ -272,6 +273,8 @@ class PolicyApplier(context: Context) {
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume}"
         )
+        // Post-setup: if LINE missing, try silent APK then Play Store (async; do not block apply).
+        LineInstaller.ensureLineInstalledAsync(appContext)
         return ApplyResult(
             success = true,
             hiddenCount = hidden.size,
