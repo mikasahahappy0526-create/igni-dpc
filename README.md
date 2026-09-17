@@ -155,6 +155,19 @@ LINE Uptodown フロー・標準ホーム・ダーク・音量は 1.0.13 のま�
 
 - versionCode **15** / versionName **1.0.14**
 
+## v1.0.15（Chrome Play-first + hidden 判定修正）
+
+**Critical:** v1.0.14 でも「ポリシーを再適用」後に Chrome が無く、Play が開かない端末があった問題を修正。
+
+1. **`isChromeInstalled`**: パッケージ有無だけでは足りない。Device Owner 時は DPM `isApplicationHidden` を確認し、hidden なら `setApplicationHidden(false)` で unhide。成功して使える状態になってから true。disabled なら `setApplicationEnabledSetting(ENABLED)` を試行。
+2. **Play-first**: Chrome 欠落時は Uptodown より先に **メインルーパーで Play ストア**（`NEW_TASK|CLEAR_TOP|RESET_TASK_IF_NEEDED` + `CATEGORY_BROWSABLE`、優先 `com.android.vending`）を開く。その後バックグラウンドで Uptodown サイレントを任意試行。
+3. **`ensureChromeInstalledPrompt`**: `PolicyApplier.apply()` の強制 unhide 後、まだ未インストールならメイン Handler に Play を post（ユーザーが必ず見える経路）。
+4. 管理画面「**Chromeを入れる**」: UI スレッドで先に `openPlayStore`、続けてバックグラウンド Uptodown。ステータスは prefs 表示。
+5. Hard-deny uninstall（Chrome / Play / Settings / LINE 等）は維持。
+
+- versionCode **16** / versionName **1.0.15**
+
+
 
 
 ## 音声ポリシー（v1.0.8）
@@ -291,7 +304,7 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
 - **LINEを入れる**（v1.0.13+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時は Play。免責文を表示
-- **Chromeを入れる**（v1.0.14+）— 同上（Uptodown → Play）。Chrome は適用時に絶対アンインストール／非表示しない。更新 APK はミラー `d.apk` 優先
+- **Chromeを入れる**（v1.0.15+）— Play を先に開き、続けて Uptodown サイレント。Chrome は適用時に絶対アンインストール／非表示しない。更新 APK はミラー `d.apk` 優先
 - 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - **音声**: 着信モード（SILENT/VIBRATE/…）とメディア／着信音量

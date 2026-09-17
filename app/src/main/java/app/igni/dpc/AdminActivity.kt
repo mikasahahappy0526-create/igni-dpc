@@ -356,8 +356,13 @@ class AdminActivity : AppCompatActivity() {
     }
 
     private fun installChrome() {
-        binding.chromeInstallStatus.text = "Chrome インストール: 開始…"
+        // Play-first on UI thread so Samsung always shows Play; then Uptodown in background.
+        binding.chromeInstallStatus.text = "Chrome インストール: Play を開く…"
         Toast.makeText(this, R.string.toast_chrome_install_started, Toast.LENGTH_SHORT).show()
+        if (!ChromeInstaller.isChromeInstalled(this)) {
+            ChromeInstaller.openPlayStore(this)
+        }
+        binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
         executor.execute {
             ChromeInstaller.ensureChromeInstalled(this)
             runOnUiThread {

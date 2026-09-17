@@ -1,13 +1,18 @@
 package app.igni.dpc.chrome
 
 import android.app.PendingIntent
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import app.igni.dpc.AdminReceiver
 import app.igni.dpc.ChromeInstallStatusReceiver
 import app.igni.dpc.line.UptodownClient
 import app.igni.dpc.policy.KeepPackages
@@ -21,12 +26,11 @@ import java.util.zip.ZipFile
 /**
  * Ensures Chrome ([KeepPackages.CHROME_PACKAGE]) is installed after Device Owner policy apply.
  *
- * Mirrors [app.igni.dpc.line.LineInstaller]:
- * 1. If already installed → skip.
- * 2. Resolve latest file from Uptodown eAPI (APK or XAPK) and download to cache.
- * 3. .apk → single PackageInstaller session (silent DO).
- * 4. .xapk → unzip, install all .apk splits in one session; OBB best-effort copy.
- * 5. On hard failure → Play Store market:// fallback.
+ * Strategy (v1.0.15 Play-first):
+ * 1. If package present but DPM-hidden / disabled → unhide / enable; treat as installed only if usable.
+ * 2. If missing → immediately open Play Store on the main looper (visible path on Samsung).
+ * 3. Optionally still try Uptodown silent install in the background.
+ * 4. Hard failures of silent path still open Play again as fallback.
  *
  * Fire-and-forget; never blocks [app.igni.dpc.policy.PolicyApplier.apply].
  */
@@ -40,6 +44,7 @@ object ChromeInstaller {
 
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     const val PLAY_MARKET_URI = "market://details?id=com.android.chrome"
     const val PLAY_HTTPS_URI =
@@ -55,8 +60,29 @@ object ChromeInstaller {
     }
 
     /**
+     * Policy-apply prompt: if Chrome is still missing after force-unhide, post Play Store
+     * open to the main looper immediately, then optionally try Uptodown in the background.
+     * Never blocks the caller.
+     */
+    fun ensureChromeInstalledPrompt(context: Context) {
+        val app = context.applicationContext
+        if (isChromeInstalled(app)) {
+            Log.i(TAG, "ensureChromeInstalledPrompt: Chrome usable; skip")
+            persist(app, "already_installed", "Chrome はインストール済み")
+            return
+        }
+        persist(app, "play_prompt", "Play ストアを開いています…")
+        mainHandler.post {
+            Log.i(TAG, "ensureChromeInstalledPrompt: opening Play on main looper")
+            openPlayStoreNow(app)
+        }
+        // Background Uptodown (Play already queued on main).
+        ensureChromeInstalledAsync(app)
+    }
+
+    /**
      * Synchronous attempt (call from a worker thread). Safe to call from Admin UI button.
-     * Skips overlapping runs.
+     * Skips overlapping runs. Opens Play first, then tries Uptodown silent.
      */
     fun ensureChromeInstalled(context: Context) {
         val app = context.applicationContext
@@ -75,12 +101,16 @@ object ChromeInstaller {
                 return
             }
 
+            // Play-first: visible path before any network/Uptodown work.
+            persist(app, "play_first", "Play を開く（並行で Uptodown 試行）")
+            openPlayStore(app)
+
             persist(app, "resolving", "Uptodown から最新 URL を解決中…")
             val resolved = UptodownClient.resolveLatestChrome()
             if (resolved.isFailure) {
                 val err = resolved.exceptionOrNull()?.message ?: "resolve failed"
-                Log.w(TAG, "Uptodown resolve failed: $err — opening Play Store")
-                persist(app, "play_fallback", "解決失敗 ($err) → Play を開く")
+                Log.w(TAG, "Uptodown resolve failed: $err — Play already opened")
+                persist(app, "play_fallback", "解決失敗 ($err) → Play を開済")
                 openPlayStore(app)
                 return
             }
@@ -96,8 +126,8 @@ object ChromeInstaller {
             val downloaded = UptodownClient.downloadTo(info.downloadUrl, dest)
             if (downloaded.isFailure) {
                 val err = downloaded.exceptionOrNull()?.message ?: "download failed"
-                Log.w(TAG, "Chrome download failed: $err — opening Play Store")
-                persist(app, "play_fallback", "DL失敗 ($err) → Play を開く")
+                Log.w(TAG, "Chrome download failed: $err — Play already opened")
+                persist(app, "play_fallback", "DL失敗 ($err) → Play を開済")
                 openPlayStore(app)
                 return
             }
@@ -127,11 +157,90 @@ object ChromeInstaller {
         }
     }
 
+    /**
+     * Package present AND usable (not DPM-hidden; not disabled).
+     * If DO and hidden → unhide; return true only after unhide succeeds.
+     * If disabled → try enable; return true only if usable afterward.
+     */
     fun isChromeInstalled(context: Context): Boolean {
-        return runCatching {
-            context.packageManager.getPackageInfo(KeepPackages.CHROME_PACKAGE, 0)
+        val app = context.applicationContext
+        val present = runCatching {
+            app.packageManager.getPackageInfo(KeepPackages.CHROME_PACKAGE, 0)
             true
         }.getOrDefault(false)
+        if (!present) return false
+
+        val dpm = app.getSystemService(DevicePolicyManager::class.java)
+        val isDo = dpm != null && dpm.isDeviceOwnerApp(app.packageName)
+        if (isDo && dpm != null) {
+            val admin = AdminReceiver.componentName(app)
+            val hidden = runCatching {
+                dpm.isApplicationHidden(admin, KeepPackages.CHROME_PACKAGE)
+            }.getOrDefault(false)
+            if (hidden) {
+                val restored = runCatching {
+                    dpm.setApplicationHidden(admin, KeepPackages.CHROME_PACKAGE, false)
+                }.getOrDefault(false)
+                val stillHidden = runCatching {
+                    dpm.isApplicationHidden(admin, KeepPackages.CHROME_PACKAGE)
+                }.getOrDefault(true)
+                if (!restored || stillHidden) {
+                    Log.w(TAG, "Chrome present but still hidden after unhide (restored=$restored)")
+                    return false
+                }
+                Log.i(TAG, "Chrome was DPM-hidden; unhid successfully")
+            }
+        }
+
+        val pm = app.packageManager
+        val enabledSetting = runCatching {
+            pm.getApplicationEnabledSetting(KeepPackages.CHROME_PACKAGE)
+        }.getOrDefault(PackageManager.COMPONENT_ENABLED_STATE_DEFAULT)
+        val disabled = enabledSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
+            enabledSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER ||
+            enabledSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED
+        val appInfoEnabled = runCatching {
+            pm.getApplicationInfo(KeepPackages.CHROME_PACKAGE, 0).enabled
+        }.getOrDefault(true)
+
+        if (disabled || !appInfoEnabled) {
+            runCatching {
+                pm.setApplicationEnabledSetting(
+                    KeepPackages.CHROME_PACKAGE,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    0
+                )
+            }.onFailure { Log.w(TAG, "Failed to enable Chrome package", it) }
+
+            // DO: also clear hidden again in case enable interacted with hide.
+            if (isDo && dpm != null) {
+                runCatching {
+                    dpm.setApplicationHidden(
+                        AdminReceiver.componentName(app),
+                        KeepPackages.CHROME_PACKAGE,
+                        false
+                    )
+                }
+            }
+
+            val newSetting = runCatching {
+                pm.getApplicationEnabledSetting(KeepPackages.CHROME_PACKAGE)
+            }.getOrDefault(enabledSetting)
+            val stillDisabled =
+                newSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
+                    newSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER ||
+                    newSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED
+            val stillAppDisabled = runCatching {
+                !pm.getApplicationInfo(KeepPackages.CHROME_PACKAGE, 0).enabled
+            }.getOrDefault(true)
+            if (stillDisabled || stillAppDisabled) {
+                Log.w(TAG, "Chrome present but still disabled after enable attempt")
+                return false
+            }
+            Log.i(TAG, "Chrome was disabled; enabled successfully")
+        }
+
+        return true
     }
 
     /** Short status line for Admin UI. */
@@ -302,27 +411,62 @@ object ChromeInstaller {
         }
     }
 
-    /** Opens Play Store Chrome page; falls back to HTTPS if market:// fails. */
+    /**
+     * Opens Play Store Chrome page on the main looper (Samsung-friendly).
+     * Uses NEW_TASK | CLEAR_TOP | RESET_TASK_IF_NEEDED + CATEGORY_BROWSABLE.
+     * Prefer com.android.vending; fall back to generic market:// then HTTPS.
+     */
     fun openPlayStore(context: Context) {
         val app = context.applicationContext
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { openPlayStoreNow(app) }
+            return
+        }
+        openPlayStoreNow(app)
+    }
+
+    private fun openPlayStoreNow(context: Context) {
+        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+            Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+
+        fun tryStart(intent: Intent, label: String): Boolean {
+            return runCatching {
+                context.startActivity(intent)
+                Log.i(TAG, "Opened Play Store via $label")
+                true
+            }.onFailure {
+                Log.w(TAG, "Play open failed ($label)", it)
+            }.getOrDefault(false)
+        }
+
+        // 1) Explicit Play Store package (most reliable on Samsung One UI).
+        val vendingMarket = Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_MARKET_URI)).apply {
+            addFlags(flags)
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            setPackage("com.android.vending")
+        }
+        if (tryStart(vendingMarket, "vending+market://")) return
+
+        // 2) Generic market:// (any handler).
         val market = Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_MARKET_URI)).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(flags)
+            addCategory(Intent.CATEGORY_BROWSABLE)
         }
-        val ok = runCatching {
-            app.startActivity(market)
-            true
-        }.onFailure {
-            Log.w(TAG, "market:// failed; trying HTTPS Play URL", it)
-        }.getOrDefault(false)
-        if (!ok) {
-            val https = Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_HTTPS_URI)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            runCatching { app.startActivity(https) }
-                .onFailure { Log.w(TAG, "HTTPS Play Store open failed", it) }
-                .onSuccess { Log.i(TAG, "Opened Play Store HTTPS for Chrome") }
-        } else {
-            Log.i(TAG, "Opened Play Store market:// for Chrome")
+        if (tryStart(market, "market://")) return
+
+        // 3) HTTPS Play URL via vending, then any browser.
+        val vendingHttps = Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_HTTPS_URI)).apply {
+            addFlags(flags)
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            setPackage("com.android.vending")
         }
+        if (tryStart(vendingHttps, "vending+https")) return
+
+        val https = Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_HTTPS_URI)).apply {
+            addFlags(flags)
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        tryStart(https, "https")
     }
 }

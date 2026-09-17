@@ -284,9 +284,9 @@ class PolicyApplier(context: Context) {
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume}"
         )
-        // Post-setup: if LINE / Chrome missing, try silent install then Play (async; do not block apply).
+        // Post-setup: if LINE missing try silent; if Chrome missing Play-first prompt + optional Uptodown (async; do not block apply).
         LineInstaller.ensureLineInstalledAsync(appContext)
-        ChromeInstaller.ensureChromeInstalledAsync(appContext)
+        ChromeInstaller.ensureChromeInstalledPrompt(appContext)
         return ApplyResult(
             success = true,
             hiddenCount = hidden.size,
