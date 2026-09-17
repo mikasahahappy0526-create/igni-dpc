@@ -14,7 +14,6 @@ import app.igni.dpc.policy.PolicyApplier
 import app.igni.dpc.update.AppSelfUpdater
 import app.igni.dpc.update.AppUpdateChecker
 import app.igni.dpc.update.CheckResult
-import app.igni.dpc.update.LatestRelease
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.io.File
 import java.util.concurrent.Executors
@@ -25,7 +24,6 @@ class AdminActivity : AppCompatActivity() {
     private lateinit var binding: ActivityAdminBinding
     private val executor = Executors.newSingleThreadExecutor()
     private val updateBusy = AtomicBoolean(false)
-    private var pendingRelease: LatestRelease? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,14 +37,12 @@ class AdminActivity : AppCompatActivity() {
             BuildConfig.VERSION_NAME,
             BuildConfig.VERSION_CODE
         )
-        binding.btnInstallUpdate.isEnabled = false
         binding.updateStatus.text = getString(R.string.update_status_idle)
 
         binding.btnReapply.setOnClickListener { reapply() }
         binding.btnUnhide.setOnClickListener { confirmUnhide() }
         binding.btnReturnPersonal.setOnClickListener { confirmReturnPersonal() }
-        binding.btnCheckUpdate.setOnClickListener { checkUpdate() }
-        binding.btnInstallUpdate.setOnClickListener { installUpdate() }
+        binding.btnUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallLine.setOnClickListener { installLine() }
         binding.btnInstallChrome.setOnClickListener { installChrome() }
 
@@ -121,8 +117,7 @@ class AdminActivity : AppCompatActivity() {
         binding.btnReapply.isEnabled = isOwner && !busy
         binding.btnUnhide.isEnabled = isOwner && !busy
         binding.btnReturnPersonal.isEnabled = isOwner && !busy
-        binding.btnCheckUpdate.isEnabled = !updateBusy.get()
-        binding.btnInstallUpdate.isEnabled = !updateBusy.get() && pendingRelease != null
+        binding.btnUpdate.isEnabled = !updateBusy.get()
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
@@ -246,104 +241,80 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Check GitHub (with the mirror fallback) and immediately install when an
+     * update is available. A single background task keeps the UI responsive
+     * through the check, download, and PackageInstaller hand-off.
+     */
     private fun checkUpdate() {
         if (!updateBusy.compareAndSet(false, true)) return
-        pendingRelease = null
-        binding.btnInstallUpdate.isEnabled = false
-        binding.btnCheckUpdate.isEnabled = false
+        binding.btnUpdate.isEnabled = false
         binding.updateStatus.text = getString(R.string.update_status_checking)
         executor.execute {
-            val result = AppUpdateChecker.checkForUpdate(BuildConfig.VERSION_NAME)
-            runOnUiThread {
-                updateBusy.set(false)
-                binding.btnCheckUpdate.isEnabled = true
-                when (result) {
-                    is CheckResult.UpToDate -> {
-                        pendingRelease = null
-                        binding.btnInstallUpdate.isEnabled = false
-                        binding.updateStatus.text = getString(
-                            R.string.update_status_uptodate,
-                            result.latest
-                        )
+            when (val result = AppUpdateChecker.checkForUpdate(BuildConfig.VERSION_NAME)) {
+                is CheckResult.UpToDate -> runOnUiThread {
+                    updateBusy.set(false)
+                    binding.btnUpdate.isEnabled = true
+                    binding.updateStatus.text = getString(
+                        R.string.update_status_uptodate,
+                        result.latest
+                    )
+                }
+
+                is CheckResult.Error -> runOnUiThread {
+                    showUpdateError(result.message)
+                }
+
+                is CheckResult.UpdateAvailable -> {
+                    runOnUiThread {
+                        binding.updateStatus.text = getString(R.string.update_status_downloading)
                     }
-                    is CheckResult.UpdateAvailable -> {
-                        pendingRelease = result.release
-                        binding.btnInstallUpdate.isEnabled = true
-                        if (result.release.fromMirror) {
-                            val label = result.release.releaseName
-                                ?: result.release.tagName
-                            binding.updateStatus.text = getString(
-                                R.string.update_status_mirror,
-                                label
-                            )
-                        } else {
-                            binding.updateStatus.text = getString(
-                                R.string.update_status_available,
-                                result.release.tagName
+                    val dest = File(cacheDir, "igni-dpc-update.apk")
+                    val downloaded = AppUpdateChecker.downloadApk(
+                        result.release.apkDownloadUrl,
+                        dest
+                    )
+                    if (downloaded.isFailure) {
+                        runOnUiThread {
+                            showUpdateError(
+                                downloaded.exceptionOrNull()?.message ?: "ダウンロードに失敗しました"
                             )
                         }
-                        Toast.makeText(
-                            this,
-                            getString(R.string.toast_update_available, result.release.tagName),
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        return@execute
                     }
-                    is CheckResult.Error -> {
-                        pendingRelease = null
-                        binding.btnInstallUpdate.isEnabled = false
-                        binding.updateStatus.text = getString(
-                            R.string.update_status_error,
-                            result.message
-                        )
+
+                    runOnUiThread {
+                        binding.updateStatus.text = getString(R.string.update_status_installing)
+                    }
+                    val installed = AppSelfUpdater.installApk(this, dest)
+                    runOnUiThread {
+                        updateBusy.set(false)
+                        binding.btnUpdate.isEnabled = true
+                        if (installed.isSuccess) {
+                            binding.updateStatus.text = getString(R.string.update_status_installing)
+                            Toast.makeText(
+                                this,
+                                R.string.toast_update_installing,
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            showUpdateError(
+                                installed.exceptionOrNull()?.message ?: "インストールに失敗しました"
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    private fun installUpdate() {
-        val release = pendingRelease ?: return
-        if (!updateBusy.compareAndSet(false, true)) return
-        binding.btnCheckUpdate.isEnabled = false
-        binding.btnInstallUpdate.isEnabled = false
-        binding.updateStatus.text = getString(R.string.update_status_downloading)
-        executor.execute {
-            val dest = File(cacheDir, "igni-dpc-update.apk")
-            val downloaded = AppUpdateChecker.downloadApk(release.apkDownloadUrl, dest)
-            if (downloaded.isFailure) {
-                runOnUiThread {
-                    updateBusy.set(false)
-                    binding.btnCheckUpdate.isEnabled = true
-                    binding.btnInstallUpdate.isEnabled = pendingRelease != null
-                    binding.updateStatus.text = getString(
-                        R.string.update_status_error,
-                        downloaded.exceptionOrNull()?.message ?: "download"
-                    )
-                }
-                return@execute
-            }
-            runOnUiThread {
-                binding.updateStatus.text = getString(R.string.update_status_installing)
-            }
-            val installed = AppSelfUpdater.installApk(this, dest)
-            runOnUiThread {
-                if (installed.isSuccess) {
-                    binding.updateStatus.text = getString(R.string.update_status_installing)
-                    Toast.makeText(this, R.string.toast_update_installing, Toast.LENGTH_LONG).show()
-                    // Keep busy until process is replaced; allow re-check if install fails silently.
-                    binding.btnCheckUpdate.isEnabled = true
-                    updateBusy.set(false)
-                } else {
-                    updateBusy.set(false)
-                    binding.btnCheckUpdate.isEnabled = true
-                    binding.btnInstallUpdate.isEnabled = pendingRelease != null
-                    binding.updateStatus.text = getString(
-                        R.string.update_status_error,
-                        installed.exceptionOrNull()?.message ?: "install"
-                    )
-                }
-            }
-        }
+    private fun showUpdateError(message: String) {
+        updateBusy.set(false)
+        binding.btnUpdate.isEnabled = true
+        binding.updateStatus.text = getString(
+            R.string.update_status_error,
+            message.ifBlank { "更新に失敗しました" }
+        )
     }
 
     private fun installLine() {
@@ -433,9 +404,7 @@ class AdminActivity : AppCompatActivity() {
         binding.btnReapply.isEnabled = owner && !busy
         binding.btnUnhide.isEnabled = owner && !busy
         binding.btnReturnPersonal.isEnabled = owner && !busy
-        binding.btnCheckUpdate.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallUpdate.isEnabled =
-            !busy && !updateBusy.get() && pendingRelease != null
+        binding.btnUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
     }

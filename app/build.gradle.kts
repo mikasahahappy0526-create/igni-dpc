@@ -19,8 +19,8 @@ android {
         applicationId = "app.igni.dpc"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.0.16"
+        versionCode = 18
+        versionName = "1.0.17"
 
         // Hide-based dedicated terminal is the default.
         // Set true only if you want Settings / Play Store / this DPC to be lock-task allowlisted.

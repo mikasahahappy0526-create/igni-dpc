@@ -40,17 +40,14 @@
     <string name="home_launch_failed">起動できませんでした</string>
 
     <string name="current_version">現在のバージョン: %1$s (%2$d)</string>
-    <string name="btn_check_update">更新を確認</string>
-    <string name="btn_install_update">最新版をインストール</string>
+    <string name="btn_update">最新版に更新</string>
     <string name="update_status_idle">更新: 未確認</string>
     <string name="update_status_checking">更新: 確認中…</string>
     <string name="update_status_uptodate">更新: 最新です（%1$s）</string>
-    <string name="update_status_available">更新: 新しいバージョン %1$s があります</string>
     <string name="update_status_downloading">更新: ダウンロード中…</string>
     <string name="update_status_installing">更新: インストール中…（完了後に再起動します）</string>
     <string name="update_status_error">更新: エラー — %1$s</string>
     <string name="update_note">同じ署名キーでビルドされた GitHub Releases の最新 APK を、Device Owner として自己更新します。工場出荷リセットや QR の再読み取りは不要です。</string>
-    <string name="toast_update_available">更新があります: %1$s</string>
     <string name="toast_update_installing">インストールを開始しました</string>
 
     <string name="btn_install_line">LINEを入れる</string>
@@ -64,7 +61,6 @@
     <string name="chrome_install_note">ポリシー適用後、Chrome 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時は Play ストアを開きます。適用時に Chrome は絶対にアンインストール／非表示しません。</string>
     <string name="toast_chrome_install_started">Chrome インストールを開始しました</string>
     <string name="chrome_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
-    <string name="update_status_mirror">更新: ミラーから取得（%1$s）</string>
 
     <string name="btn_return_personal">個人用に戻す（Device Owner解除）</string>
     <string name="return_personal_note">「個人用に戻す」は Device Owner を解除し、イグニを通常アプリにします。非表示にしたシステムアプリは再表示されますが、アンインストール済みのユーザーアプリは戻りません。ポリシー（非表示・アンインストール・ダーク／音量等）は以降適用されません。</string>

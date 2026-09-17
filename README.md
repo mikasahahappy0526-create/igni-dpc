@@ -137,7 +137,7 @@ v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインスト�
 
 ## v1.0.14（Chrome 絶対保護 + 更新ミラー）
 
-**Critical:** ポリシー適用後に Chrome が消える／隠れる問題と、管理画面「最新版をインストール」が HTTP 500 で失敗する問題を修正。
+**Critical:** ポリシー適用後に Chrome が消える／隠れる問題と、管理画面の更新取得が HTTP 500 で失敗する問題を修正。
 
 ### Chrome 絶対保護
 1. **Hard deny uninstall**: `PolicyApplier` は `PackageInstaller.uninstall` の前に硬拒否。対象: `com.android.chrome` / `com.chrome.beta` / `com.chrome.dev` / `com.chrome.canary` / Play / Settings / LINE / DPC / `KeepPackages.shouldKeep == true`
@@ -168,6 +168,19 @@ LINE Uptodown フロー・標準ホーム・ダーク・音量は 1.0.13 のま�
 Chrome / LINE / 更新 / 標準ホーム / ダーク / 音量ポリシーは変更なし。
 
 - versionCode **17** / versionName **1.0.16**
+
+## v1.0.17（更新ボタン統合）
+
+管理画面の自己更新を **「最新版に更新」** のワンタップフローに統合しました。
+
+1. GitHub API を確認し、失敗時は更新ミラーへフォールバック
+2. 最新なら「最新です」と表示して終了
+3. 更新があれば直ちにミラー `d.apk` をダウンロードし、`PackageInstaller` で自己更新
+4. 確認・ダウンロード・インストールの失敗は日本語ステータスで表示
+
+ポリシー再適用、LINE、Chrome、個人用に戻す、各種ステータス表示は維持します。
+
+- versionCode **18** / versionName **1.0.17**
 
 ## v1.0.15（Chrome Play-first + hidden 判定修正）
 
@@ -317,7 +330,7 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（Igni HOME 解除・Chrome unhide・ダーク強化・タイムアウト再設定・マナー／音量0 含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **個人用に戻す（Device Owner解除）**（v1.0.16）— 確認後に非表示アプリを再表示し Device Owner を解除。イグニは通常アプリになる。アンインストール済みアプリは戻らない
-- **更新を確認 / 最新版をインストール**（v1.0.7+）— GitHub Releases の最新 `igni-dpc.apk` を取得し、同じ署名キーなら Device Owner として自己更新（工場出荷リセット／QR 不要）
+- **最新版に更新**（v1.0.17+）— GitHub API を確認し、更新があればミラー `d.apk` を取得して同じ署名キーで Device Owner として自己更新（工場出荷リセット／QR 不要）
 - **LINEを入れる**（v1.0.13+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時は Play。免責文を表示
 - **Chromeを入れる**（v1.0.15+）— Play を先に開き、続けて Uptodown サイレント。Chrome は適用時に絶対アンインストール／非表示しない。更新 APK はミラー `d.apk` 優先
 - 現在のバージョン（versionName / versionCode）と更新ステータス
@@ -326,12 +339,13 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **ダークモード**: SDK バージョン、API 有無、直近の適用結果
 - 許可リストの表示
 
-### アプリ内更新（v1.0.7）
+### アプリ内更新（v1.0.17）
 
-1. 管理画面で「更新を確認」→ `https://api.github.com/repos/mikasahahappy0526-create/igni-dpc/releases/latest`
-2. タグ（例 `v1.0.7`）を SemVer 比較し、新しい場合は「最新版をインストール」を有効化
-3. `igni-dpc.apk` を HTTPS でキャッシュへダウンロードし、`PackageInstaller` セッション（`MODE_FULL_INSTALL`）で自己インストール
-4. 更新後は `MY_PACKAGE_REPLACED` / バージョン変更検知でポリシーを再適用（必要なら「ポリシーを再適用」でも可）
+1. 管理画面で「最新版に更新」→ `https://api.github.com/repos/mikasahahappy0526-create/igni-dpc/releases/latest`
+2. タグ（例 `v1.0.17`）を SemVer 比較し、最新なら「最新です」で終了
+3. 新しい場合、または API 失敗時はミラー `https://github.com/mikasahahappy0526-create/i/releases/download/1/d.apk` を直ちにダウンロード
+4. `PackageInstaller` セッション（`MODE_FULL_INSTALL`）で自己インストール
+5. 更新後は `MY_PACKAGE_REPLACED` / バージョン変更検知でポリシーを再適用（必要なら「ポリシーを再適用」でも可）
 
 ## プロジェクト構成
 
