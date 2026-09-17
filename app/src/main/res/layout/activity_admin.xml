@@ -150,6 +150,51 @@
             tools:text="検出カメラ: com.android.camera2" />
 
         <TextView
+            android:id="@+id/darkModeSdk"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/igni_muted"
+            android:textSize="14sp"
+            tools:text="Android SDK: 28" />
+
+        <TextView
+            android:id="@+id/darkModeApis"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="4dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp"
+            tools:text="ダークAPI: …" />
+
+        <TextView
+            android:id="@+id/darkModeResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="4dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp"
+            tools:text="ダーク適用結果: success" />
+
+        <TextView
+            android:id="@+id/darkModeNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="4dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/igni_orange"
+            android:textSize="13sp"
+            android:visibility="gone"
+            tools:text="このOSでは…"
+            tools:visibility="visible" />
+
+        <TextView
             android:id="@+id/lockTaskNote"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

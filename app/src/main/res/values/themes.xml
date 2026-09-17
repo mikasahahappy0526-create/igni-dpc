@@ -17,6 +17,14 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
+    <!-- Dock home: dark wallpaper-friendly bg, status bar visible (not immersive). -->
+    <style name="Theme.Igni.Home" parent="Theme.Igni">
+        <item name="android:windowBackground">@drawable/home_wallpaper_gradient</item>
+        <item name="android:statusBarColor">#FF121416</item>
+        <item name="android:navigationBarColor">#FF0A0B0D</item>
+        <item name="android:windowFullscreen">false</item>
+    </style>
+
     <style name="ThemeOverlay.Igni.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="colorPrimary">@color/igni_orange</item>
         <item name="colorSurface">@color/igni_surface</item>

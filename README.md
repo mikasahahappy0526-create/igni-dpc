@@ -1,6 +1,6 @@
 # イグニ DPC（Device Policy Controller）
 
-完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**標準（OEM）のホーム画面**を使い、**設定**・**Play ストア**・**カメラ**・**Chrome** 以外について次を適用します（システムランチャーは置き換えません）。
+完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**ドック型ホーム**（設定・Playストア・Chrome・カメラ）を使い、許可リスト外について次を適用します。
 
 - **ユーザーアプリ**（非システム）: Device Owner として `PackageInstaller.uninstall` で**サイレントアンインストール**（容量を解放）
 - **システムアプリ**: アンインストールせず `DevicePolicyManager.setApplicationHidden(true)` で**非表示のみ**
@@ -20,8 +20,8 @@
 - `com.android.vending`（Play ストア）
 - カメラ（静的 OEM リスト + **動的検出**: `IMAGE_CAPTURE` / `STILL_IMAGE_CAMERA` / `VIDEO_CAMERA` ハンドラ、および packageName に `camera` を含む MAIN/LAUNCHER アプリ。適用時に必ず unhide）
 - `com.android.chrome`（Chrome；安定版が無い場合のみ beta）
-- この DPC 自身（`AdminActivity` — 「ポリシーを再適用」用の通常ランチャーアプリアイコン）
-- 標準の HOME ランチャー、SystemUI、IME など端末動作に必要なパッケージ
+- この DPC 自身（`HomeActivity` が HOME。`AdminActivity` はホームの「管理」から開く）
+- SystemUI、IME など端末動作に必要なパッケージ
 
 **隠さない安全リスト（例）**
 
@@ -29,15 +29,17 @@ SystemUI、PackageInstaller、PermissionController、Google Play 開発者サー
 
 Lock Task（キオスク）は **デフォルトオフ** です。有効にする場合は `app/build.gradle.kts` の `ENABLE_LOCK_TASK` を `true` にしてください。
 
-## ホーム画面（v1.0.3+）
+## ホーム画面（v1.0.6 ドック型）
 
-**標準（OEM）ランチャーをそのまま使います。** Igni の 2×2 タイル `HomeActivity` は HOME としては使いません。
+**通常のホームに見えるドック UI** を `HomeActivity` で提供します（管理パネル風の 2×2 タイル／大きな「イグニ」バナーは使いません）。
 
-- `PolicyApplier` は `addPersistentPreferredActivity` を呼ばず、適用時に `clearPackagePersistentPreferredActivities(admin, packageName)` で過去の HOME 乗っ取りを解除します
-- `HomeActivity` はマニフェストで無効化（HOME/DEFAULT フィルタなし）
-- `AdminActivity` は通常の `LAUNCHER` アイコン（「ポリシーを再適用」専用）。HOME には強制しません
-- 非許可リストのユーザーアプリはアンインストール、システムアプリは非表示にし、ストックランチャーに Settings / Play / Camera / Chrome（と OEM が置くもの）が残るようにします
-- ショートカットのサイレント pin は DO でもユーザー確認が必要なことが多く、信頼できないため行いません（hide + 標準ホームに依存）
+- 全画面の暗いニュートラル背景（グラデーション）＋**画面下部の横一列ドック**（左→右固定）:
+  1. 設定　2. Playストア　3. Chrome　4. カメラ
+- アイコンは可能なら `PackageManager` の実アプリアイコン。日本語ラベル付き。ステータスバーは表示したまま（immersive 固定オフ）
+- 端の小さな「管理」または空領域の長押しで `AdminActivity`（再適用）
+- マニフェスト: `HomeActivity` に `MAIN` + `HOME` + `DEFAULT`。`AdminActivity` に `LAUNCHER` は付けない
+- `PolicyApplier.apply()`: 自パッケージの `clearPackagePersistentPreferredActivities` のあと `addPersistentPreferredActivity` でこの Home を再設定
+- 許可リスト外のユーザーアプリ・アンインストール／システム非表示は v1.0.5 と同じ
 
 ## カメラ保護（v1.0.4）
 
@@ -63,11 +65,16 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - アンインストールしたパッケージは `HiddenStore` から除去（もう無いため）。システム非表示は追跡を継続
 - 「アプリ一覧を表示に戻す」は **隠したシステムアプリのみ**復元可能。アンインストール済みユーザーアプリは復元不可（Play 等から再インストール）
 
-## 表示ポリシー（v1.0.2+ / 強化 v1.0.3）
+## 表示ポリシー（v1.0.2+ / 強化 v1.0.3 / ダーク強化 v1.0.6）
 
 `PolicyApplier.apply()`（プロビジョニング完了・起動・再適用時）で次も冪等に適用します。個別パスの失敗はログのみで、適用全体は止めません。
 
-- **ダークモード ON**: `UiModeManager.setNightMode(MODE_NIGHT_YES)` / API 30+ は `setNightModeActivated(true)`、必要なら `Settings.Secure.UI_NIGHT_MODE` も設定
+- **ダークモード ON（強化）**:
+  - `UiModeManager.setNightMode(MODE_NIGHT_YES)` / API 30+ は `setNightModeActivated(true)`（反射）
+  - `Settings.Secure.ui_night_mode = 2`
+  - 追加で安全な OEM 系キーを試行: `dark_theme` / `night_mode` / `ui_night_mode`（Secure・System・Global）
+  - 結果を永続化し、管理画面に **Android SDK・API 有無・適用結果（success/fail/unsupported）** を表示
+  - **SDK &lt; 29**（Android 10 未満）ではシステム暗色テーマが無い場合がある旨を日本語で注記（Sharp AQUOS sense3 の Android 9 など）
 - **画面オフ 30 分**:
   - `Settings.System.putInt(..., SCREEN_OFF_TIMEOUT, 1_800_000)` のあと **読み戻してログ**
   - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, SCREEN_OFF_TIMEOUT, "1800000")`（DO SystemApi）も試す
@@ -191,12 +198,13 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 
 ## 管理画面
 
-ランチャーの「イグニ」アイコン（`AdminActivity`）から開くと:
+ドックホームの「管理」（または空領域の長押し）から `AdminActivity` を開くと:
 
 - Device Owner の有効 / 無効
-- **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（HOME 乗っ取り解除・タイムアウト再設定含む）
+- **ポリシーを再適用** — 許可リスト外のユーザーアプリをアンインストールし、システム不要アプリを非表示（ドック Home 再設定・ダーク強化・タイムアウト再設定含む）
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
+- **ダークモード**: SDK バージョン、API 有無、直近の適用結果
 - 許可リストの表示
 
 ## プロジェクト構成

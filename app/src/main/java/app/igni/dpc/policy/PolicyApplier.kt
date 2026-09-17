@@ -3,8 +3,10 @@ package app.igni.dpc.policy
 import android.app.PendingIntent
 import android.app.UiModeManager
 import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -12,6 +14,7 @@ import android.provider.Settings
 import android.util.Log
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
+import app.igni.dpc.HomeActivity
 import app.igni.dpc.UninstallStatusReceiver
 
 data class ApplyResult(
@@ -21,22 +24,29 @@ data class ApplyResult(
     val uninstallRequested: Int = 0,
     val message: String? = null,
     val screenTimeoutMs: Int? = null,
-    val cameraPackages: List<String> = emptyList()
+    val cameraPackages: List<String> = emptyList(),
+    val darkMode: DarkModeStatus? = null
+)
+
+/**
+ * Result of night / dark-mode apply for Admin UI and logs.
+ * [result]: success | fail | unsupported | never
+ */
+data class DarkModeStatus(
+    val sdkInt: Int,
+    val uiModeManagerAvailable: Boolean,
+    val setNightModeActivatedAvailable: Boolean,
+    val systemDarkThemeLikely: Boolean,
+    val result: String,
+    val detail: String
 )
 
 /**
  * Idempotent Device Owner policy:
  * - Uninstall **user** apps that are not on the keep / allowlist (frees storage).
  * - Hide **system** apps that are not kept (cannot safely uninstall).
- *
- * Does **not** replace the system launcher — Home stays with the OEM/stock launcher.
- * Non-allowlist user apps are removed; system bloat stays hidden only.
- *
- * Camera apps are detected dynamically (image-capture handlers + packageName contains
- * "camera" + static OEM list) and are always unhidden on every apply(), even if they
- * were previously stored in [HiddenStore].
- *
- * Also applies display defaults: system dark mode ON and screen-off timeout 30 minutes.
+ * - Prefer dock-style [HomeActivity] as HOME via persistent preferred activity.
+ * - Apply display defaults: stronger dark mode + 30-minute screen timeout.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -47,6 +57,9 @@ class PolicyApplier(context: Context) {
     private val admin = AdminReceiver.componentName(appContext)
     private val store = HiddenStore(appContext)
     private val keep = KeepPackages(appContext)
+    private val darkPrefs = appContext
+        .createDeviceProtectedStorageContext()
+        .getSharedPreferences(DARK_PREFS, Context.MODE_PRIVATE)
 
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(appContext.packageName)
 
@@ -69,6 +82,22 @@ class PolicyApplier(context: Context) {
         }.getOrNull()
     }
 
+    /** Last dark-mode apply status (persisted), or a never-applied snapshot. */
+    fun darkModeStatus(): DarkModeStatus {
+        val stored = darkPrefs.getString(KEY_DARK_RESULT, null)
+        if (stored == null) {
+            return probeDarkModeCapabilities(result = "never", detail = "未適用")
+        }
+        return DarkModeStatus(
+            sdkInt = darkPrefs.getInt(KEY_DARK_SDK, Build.VERSION.SDK_INT),
+            uiModeManagerAvailable = darkPrefs.getBoolean(KEY_DARK_UIM_OK, true),
+            setNightModeActivatedAvailable = darkPrefs.getBoolean(KEY_DARK_ACTIVATED_OK, false),
+            systemDarkThemeLikely = darkPrefs.getBoolean(KEY_DARK_LIKELY, Build.VERSION.SDK_INT >= 29),
+            result = stored,
+            detail = darkPrefs.getString(KEY_DARK_DETAIL, "").orEmpty()
+        )
+    }
+
     fun apply(): ApplyResult {
         if (!isDeviceOwner()) {
             Log.w(TAG, "Not device owner; skip apply")
@@ -76,7 +105,8 @@ class PolicyApplier(context: Context) {
                 success = false,
                 hiddenCount = store.snapshot().size,
                 message = "not_device_owner",
-                cameraPackages = detectedCameraPackages()
+                cameraPackages = detectedCameraPackages(),
+                darkMode = darkModeStatus()
             )
         }
 
@@ -143,7 +173,6 @@ class PolicyApplier(context: Context) {
                 }
             } else {
                 // Removable user app: silent uninstall as Device Owner (frees storage).
-                // Fire-and-forget; status logged by UninstallStatusReceiver.
                 if (requestSilentUninstall(pkg)) {
                     uninstallRequested++
                     if (hidden.remove(pkg)) {
@@ -153,8 +182,7 @@ class PolicyApplier(context: Context) {
             }
         }
 
-        // Drop HiddenStore entries for packages that are no longer installed
-        // (previous hide-only versions may have tracked user apps we now uninstall).
+        // Drop HiddenStore entries for packages that are no longer installed.
         val after = installedPackageNames()
         val gone = hidden.filter { it !in after }.toList()
         for (pkg in gone) {
@@ -162,7 +190,7 @@ class PolicyApplier(context: Context) {
             Log.i(TAG, "Pruned gone package $pkg from HiddenStore")
         }
 
-        // Optional kiosk allowlist. Default false — hide/uninstall + stock-launcher UX.
+        // Optional kiosk allowlist. Default false.
         if (BuildConfig.ENABLE_LOCK_TASK) {
             val lockTaskPkgs = linkedSetOf(
                 "com.android.settings",
@@ -176,22 +204,20 @@ class PolicyApplier(context: Context) {
             }.onFailure { Log.w(TAG, "setLockTaskPackages failed", it) }
         }
 
-        // Clear any previous HOME takeover from older DPC versions; do not set a new one.
-        clearHomeTakeover()
+        // Prefer dock HomeActivity as default HOME (after clearing our prior prefs).
+        setDedicatedHomePreferred()
 
         // Display policies: dark mode + 30 min screen timeout (best-effort; never fail apply).
-        applyDarkMode()
+        val dark = applyDarkMode()
         val timeoutMs = applyScreenTimeout()
-
-        // Shortcut pinning (ShortcutManager.requestPinShortcut) always prompts the user on
-        // stock launchers — no reliable DO-silent pin API. Rely on hide + OEM home icons.
 
         store.replace(hidden)
         store.markApplied()
         Log.i(
             TAG,
             "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden " +
-                "uninstallRequested=$uninstallRequested cameras=${cameras.size} timeoutMs=$timeoutMs"
+                "uninstallRequested=$uninstallRequested cameras=${cameras.size} " +
+                "timeoutMs=$timeoutMs dark=${dark.result}"
         )
         return ApplyResult(
             success = true,
@@ -199,7 +225,8 @@ class PolicyApplier(context: Context) {
             newlyHidden = newlyHidden,
             uninstallRequested = uninstallRequested,
             screenTimeoutMs = timeoutMs,
-            cameraPackages = cameras.sorted()
+            cameraPackages = cameras.sorted(),
+            darkMode = dark
         )
     }
 
@@ -227,7 +254,6 @@ class PolicyApplier(context: Context) {
      * Returns true if the uninstall request was submitted (not that it already finished).
      */
     private fun requestSilentUninstall(packageName: String): Boolean {
-        // Ensure we are not blocking uninstall of this target (DPC itself stays blocked).
         runCatching { dpm.setUninstallBlocked(admin, packageName, false) }
 
         return runCatching {
@@ -279,34 +305,182 @@ class PolicyApplier(context: Context) {
         return apps.map { it.packageName }.toSet()
     }
 
-    /** System-wide night mode. Failures are logged; apply() still succeeds. */
-    private fun applyDarkMode() {
+    /**
+     * Stronger system-wide night mode for OEM devices (e.g. Sharp AQUOS sense3 on 9/10).
+     * Failures are logged; apply() still succeeds. Result is persisted for Admin UI.
+     */
+    private fun applyDarkMode(): DarkModeStatus {
+        val sdk = Build.VERSION.SDK_INT
         val uiMode = appContext.getSystemService(UiModeManager::class.java)
+        val uiModeOk = uiMode != null
+        val activatedApi = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            runCatching {
+                UiModeManager::class.java.getMethod(
+                    "setNightModeActivated",
+                    Boolean::class.javaPrimitiveType
+                )
+                true
+            }.getOrDefault(false)
+        val likely = sdk >= 29 // Android 10+: system dark theme
+
+        val notes = mutableListOf<String>()
+        var anySuccess = false
 
         runCatching {
             uiMode?.setNightMode(UiModeManager.MODE_NIGHT_YES)
+            anySuccess = true
+            notes += "setNightMode=ok"
             Log.i(TAG, "UiModeManager.setNightMode(MODE_NIGHT_YES)")
-        }.onFailure { Log.w(TAG, "setNightMode failed", it) }
-
-        // setNightModeActivated is public on device (API 30+) but missing from some SDK stubs;
-        // invoke reflectively so we still prefer it when present.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && uiMode != null) {
-            runCatching {
-                val m = UiModeManager::class.java.getMethod("setNightModeActivated", Boolean::class.javaPrimitiveType)
-                m.invoke(uiMode, true)
-                Log.i(TAG, "UiModeManager.setNightModeActivated(true)")
-            }.onFailure { Log.w(TAG, "setNightModeActivated failed", it) }
+        }.onFailure {
+            notes += "setNightMode=fail"
+            Log.w(TAG, "setNightMode failed", it)
         }
 
-        // Fallback / reinforce via Settings.Secure (key is @hide; use literal).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && uiMode != null) {
+            runCatching {
+                val m = UiModeManager::class.java.getMethod(
+                    "setNightModeActivated",
+                    Boolean::class.javaPrimitiveType
+                )
+                m.invoke(uiMode, true)
+                anySuccess = true
+                notes += "setNightModeActivated=ok"
+                Log.i(TAG, "UiModeManager.setNightModeActivated(true)")
+            }.onFailure {
+                notes += "setNightModeActivated=fail"
+                Log.w(TAG, "setNightModeActivated failed", it)
+            }
+        }
+
+        // Settings.Secure ui_night_mode = 2 (MODE_NIGHT_YES). Key is @hide.
+        if (putSecureInt(SECURE_UI_NIGHT_MODE, MODE_NIGHT_YES)) {
+            anySuccess = true
+            notes += "secure.ui_night_mode=2"
+        } else {
+            notes += "secure.ui_night_mode=fail"
+        }
+
+        // Additional OEM-safe Secure / System keys used by various skins (best-effort).
+        // Values: dark_theme often 1=on; night_mode / ui_night_mode often 2=yes.
+        val oemAttempts = listOf(
+            SettingAttempt("secure", "dark_theme", 1),
+            SettingAttempt("system", "dark_theme", 1),
+            SettingAttempt("secure", "night_mode", MODE_NIGHT_YES),
+            SettingAttempt("system", "night_mode", MODE_NIGHT_YES),
+            SettingAttempt("system", "ui_night_mode", MODE_NIGHT_YES),
+            SettingAttempt("global", "ui_night_mode", MODE_NIGHT_YES),
+        )
+        for (attempt in oemAttempts) {
+            val ok = when (attempt.table) {
+                "secure" -> putSecureInt(attempt.key, attempt.value)
+                "system" -> putSystemInt(attempt.key, attempt.value)
+                "global" -> putGlobalInt(attempt.key, attempt.value)
+                else -> false
+            }
+            if (ok) {
+                anySuccess = true
+                notes += "${attempt.table}.${attempt.key}=${attempt.value}"
+            }
+        }
+
+        // Trigger a configuration refresh when possible (UiModeManager already does on many OEMs).
         runCatching {
-            val ok = Settings.Secure.putInt(
-                appContext.contentResolver,
-                SECURE_UI_NIGHT_MODE,
-                UiModeManager.MODE_NIGHT_YES
-            )
-            Log.i(TAG, "Settings.Secure.$SECURE_UI_NIGHT_MODE=$MODE_NIGHT_YES put=$ok")
-        }.onFailure { Log.w(TAG, "Settings.Secure.$SECURE_UI_NIGHT_MODE failed", it) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && uiMode != null) {
+                // Reading night mode forces some implementations to reconcile.
+                val current = uiMode.nightMode
+                Log.i(TAG, "UiModeManager.nightMode read-back=$current")
+                notes += "nightModeRead=$current"
+            }
+        }.onFailure { Log.w(TAG, "nightMode read-back failed", it) }
+
+        // Soft broadcast used by some OEM overlays (harmless if ignored).
+        runCatching {
+            val intent = Intent("android.intent.action.NIGHT_MODE_CHANGED")
+                .putExtra("night_mode", MODE_NIGHT_YES)
+                .setPackage(null)
+            appContext.sendBroadcast(intent)
+            notes += "broadcast.NIGHT_MODE_CHANGED"
+        }.onFailure { Log.w(TAG, "NIGHT_MODE_CHANGED broadcast failed", it) }
+
+        val result = when {
+            !likely && !anySuccess -> "unsupported"
+            !likely && anySuccess -> "success" // best-effort on API < 29
+            anySuccess -> "success"
+            else -> "fail"
+        }
+        if (!likely) {
+            notes += "sdk<29 system_dark_may_be_unavailable"
+        }
+
+        val status = DarkModeStatus(
+            sdkInt = sdk,
+            uiModeManagerAvailable = uiModeOk,
+            setNightModeActivatedAvailable = activatedApi,
+            systemDarkThemeLikely = likely,
+            result = result,
+            detail = notes.joinToString("; ")
+        )
+        persistDarkModeStatus(status)
+        Log.i(TAG, "Dark mode apply result=$result detail=${status.detail}")
+        return status
+    }
+
+    private data class SettingAttempt(val table: String, val key: String, val value: Int)
+
+    private fun putSecureInt(key: String, value: Int): Boolean {
+        return runCatching {
+            val ok = Settings.Secure.putInt(appContext.contentResolver, key, value)
+            Log.i(TAG, "Settings.Secure.$key=$value put=$ok")
+            ok
+        }.onFailure { Log.w(TAG, "Settings.Secure.$key failed", it) }.getOrDefault(false)
+    }
+
+    private fun putSystemInt(key: String, value: Int): Boolean {
+        return runCatching {
+            val ok = Settings.System.putInt(appContext.contentResolver, key, value)
+            Log.i(TAG, "Settings.System.$key=$value put=$ok")
+            ok
+        }.onFailure { Log.w(TAG, "Settings.System.$key failed", it) }.getOrDefault(false)
+    }
+
+    private fun putGlobalInt(key: String, value: Int): Boolean {
+        return runCatching {
+            val ok = Settings.Global.putInt(appContext.contentResolver, key, value)
+            Log.i(TAG, "Settings.Global.$key=$value put=$ok")
+            ok
+        }.onFailure { Log.w(TAG, "Settings.Global.$key failed", it) }.getOrDefault(false)
+    }
+
+    private fun persistDarkModeStatus(status: DarkModeStatus) {
+        darkPrefs.edit()
+            .putInt(KEY_DARK_SDK, status.sdkInt)
+            .putBoolean(KEY_DARK_UIM_OK, status.uiModeManagerAvailable)
+            .putBoolean(KEY_DARK_ACTIVATED_OK, status.setNightModeActivatedAvailable)
+            .putBoolean(KEY_DARK_LIKELY, status.systemDarkThemeLikely)
+            .putString(KEY_DARK_RESULT, status.result)
+            .putString(KEY_DARK_DETAIL, status.detail)
+            .apply()
+    }
+
+    private fun probeDarkModeCapabilities(result: String, detail: String): DarkModeStatus {
+        val sdk = Build.VERSION.SDK_INT
+        val uiMode = appContext.getSystemService(UiModeManager::class.java)
+        val activatedApi = sdk >= Build.VERSION_CODES.R &&
+            runCatching {
+                UiModeManager::class.java.getMethod(
+                    "setNightModeActivated",
+                    Boolean::class.javaPrimitiveType
+                )
+                true
+            }.getOrDefault(false)
+        return DarkModeStatus(
+            sdkInt = sdk,
+            uiModeManagerAvailable = uiMode != null,
+            setNightModeActivatedAvailable = activatedApi,
+            systemDarkThemeLikely = sdk >= 29,
+            result = result,
+            detail = detail
+        )
     }
 
     /**
@@ -314,10 +488,6 @@ class PolicyApplier(context: Context) {
      *
      * Prefer [Settings.System.SCREEN_OFF_TIMEOUT] sticking (put + read-back). Also try
      * reflective [DevicePolicyManager.setSystemSetting] (DO SystemApi) when present.
-     *
-     * [DevicePolicyManager.setMaximumTimeToLock] is kept as a complementary ceiling, but
-     * on some OEMs it can interact oddly with interactive screen-off (keyguard vs blanking).
-     * Prefer ensuring SCREEN_OFF_TIMEOUT sticks; max-time-to-lock is best-effort only.
      *
      * @return actual SCREEN_OFF_TIMEOUT after writes, or null if unreadable.
      */
@@ -331,11 +501,10 @@ class PolicyApplier(context: Context) {
             Log.i(TAG, "SCREEN_OFF_TIMEOUT put=$ok target=${SCREEN_OFF_TIMEOUT_MS}ms")
         }.onFailure { Log.w(TAG, "SCREEN_OFF_TIMEOUT putInt failed", it) }
 
-        // DO SystemApi: DevicePolicyManager.setSystemSetting(admin, name, value)
         runCatching {
             val method = DevicePolicyManager::class.java.getMethod(
                 "setSystemSetting",
-                android.content.ComponentName::class.java,
+                ComponentName::class.java,
                 String::class.java,
                 String::class.java
             )
@@ -345,7 +514,7 @@ class PolicyApplier(context: Context) {
 
         runCatching {
             dpm.setMaximumTimeToLock(admin, SCREEN_OFF_TIMEOUT_MS.toLong())
-            Log.i(TAG, "setMaximumTimeToLock(${SCREEN_OFF_TIMEOUT_MS}ms) — complementary; prefer SCREEN_OFF_TIMEOUT")
+            Log.i(TAG, "setMaximumTimeToLock(${SCREEN_OFF_TIMEOUT_MS}ms)")
         }.onFailure { Log.w(TAG, "setMaximumTimeToLock failed", it) }
 
         val actual = currentScreenTimeoutMs()
@@ -354,15 +523,27 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Undo HOME takeover from older releases that called addPersistentPreferredActivity
-     * for HomeActivity. Leaves the stock/OEM launcher as the default HOME handler.
+     * Make [HomeActivity] the default HOME via Device Owner persistent preferred activity.
+     * Clears our package's prior prefs first, then sets Home again.
      */
-    private fun clearHomeTakeover() {
+    private fun setDedicatedHomePreferred() {
         runCatching {
             dpm.clearPackagePersistentPreferredActivities(admin, appContext.packageName)
             Log.i(TAG, "Cleared persistent preferred activities for ${appContext.packageName}")
         }.onFailure {
             Log.w(TAG, "clearPackagePersistentPreferredActivities failed", it)
+        }
+
+        val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        val homeComponent = ComponentName(appContext, HomeActivity::class.java)
+        runCatching {
+            dpm.addPersistentPreferredActivity(admin, homeFilter, homeComponent)
+            Log.i(TAG, "Preferred HOME set to $homeComponent")
+        }.onFailure {
+            Log.w(TAG, "addPersistentPreferredActivity failed", it)
         }
     }
 
@@ -377,5 +558,13 @@ class PolicyApplier(context: Context) {
             PackageManager.MATCH_DISABLED_COMPONENTS or
                 PackageManager.MATCH_UNINSTALLED_PACKAGES or
                 PackageManager.MATCH_ALL
+
+        private const val DARK_PREFS = "igni_dark_mode"
+        private const val KEY_DARK_SDK = "sdk"
+        private const val KEY_DARK_UIM_OK = "uim_ok"
+        private const val KEY_DARK_ACTIVATED_OK = "activated_ok"
+        private const val KEY_DARK_LIKELY = "likely"
+        private const val KEY_DARK_RESULT = "result"
+        private const val KEY_DARK_DETAIL = "detail"
     }
 }

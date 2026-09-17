@@ -38,24 +38,27 @@
         android:theme="@style/Theme.Igni"
         tools:targetApi="35">
 
-        <!-- Legacy tile UI kept in tree but disabled — stock OEM launcher is HOME. -->
+        <!-- Dock-style dedicated HOME: 設定 / Playストア / Chrome / カメラ -->
         <activity
             android:name=".HomeActivity"
-            android:enabled="false"
-            android:exported="false"
+            android:enabled="true"
             android:excludeFromRecents="true"
-            android:stateNotNeeded="true" />
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:theme="@style/Theme.Igni.Home">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
-        <!-- Admin / re-apply only — normal LAUNCHER app, never forced as HOME. -->
+        <!-- Admin / re-apply — open from Home 「管理」 (no LAUNCHER icon). -->
         <activity
             android:name=".AdminActivity"
             android:exported="true"
-            android:launchMode="singleTop">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:launchMode="singleTop" />
 
         <!-- Android 10+ QR / zero-touch: choose fully managed device. -->
         <activity

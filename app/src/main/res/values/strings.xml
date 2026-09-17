@@ -1,14 +1,14 @@
 <resources>
     <string name="app_name">イグニ</string>
-    <string name="device_admin_description">イグニの端末管理者。許可リスト外のユーザーアプリをアンインストールし、システムの不要アプリは非表示にします。標準のホーム画面を使います。</string>
+    <string name="device_admin_description">イグニの端末管理者。許可リスト外のユーザーアプリをアンインストールし、システムの不要アプリは非表示にします。ドック型のホーム画面を使います。</string>
     <string name="status_label">Device Owner 状態</string>
     <string name="status_device_owner">有効（完全管理端末）</string>
     <string name="status_not_device_owner">無効</string>
-    <string name="hint_owner">この端末はイグニの Device Owner です。標準のホーム画面を使い、「設定」「Playストア」「カメラ」「Chrome」以外のユーザーアプリはアンインストール（容量解放）、システムアプリの不要なものは非表示にします。システムUI・キーボードなど端末の動作に必要なパッケージは対象外です。</string>
+    <string name="hint_owner">この端末はイグニの Device Owner です。ドック型ホーム（設定・Playストア・Chrome・カメラ）を使い、許可リスト外のユーザーアプリはアンインストール（容量解放）、システムアプリの不要なものは非表示にします。システムUI・キーボードなど端末の動作に必要なパッケージは対象外です。</string>
     <string name="hint_not_owner">Device Owner ではありません。工場出荷状態にリセットしたうえで、セットアップ画面でQRコードを読み取り、このアプリを端末管理者としてプロビジョニングしてください。</string>
     <string name="btn_reapply">ポリシーを再適用</string>
     <string name="btn_unhide">アプリ一覧を表示に戻す</string>
-    <string name="reapply_note">「ポリシーを再適用」は、許可リスト外の削除可能なユーザーアプリもアンインストールします（容量を解放）。</string>
+    <string name="reapply_note">「ポリシーを再適用」は、許可リスト外の削除可能なユーザーアプリもアンインストールします（容量を解放）。ホームの再設定とダークモード強化も再適用します。</string>
     <string name="unhide_note">「アプリ一覧を表示に戻す」は、非表示にしたシステムアプリのみ再表示できます。すでにアンインストールしたユーザーアプリは復元できません（Playストア等から再インストールが必要です）。</string>
     <string name="allowlist_title">許可リスト（残す）</string>
     <string name="hidden_count">これまでに非表示にしたアプリ: %d 件</string>
@@ -16,6 +16,10 @@
     <string name="screen_timeout_unknown">画面オフタイムアウト: （取得できません）</string>
     <string name="camera_packages_value">検出カメラ (%1$d): %2$s</string>
     <string name="camera_packages_none">検出カメラ: （なし — OEMカメラが見つかりません）</string>
+    <string name="dark_mode_sdk">Android SDK: %1$d（%2$s）</string>
+    <string name="dark_mode_apis">ダークAPI: UiModeManager=%1$s / setNightModeActivated=%2$s / システム暗色テーマ想定=%3$s</string>
+    <string name="dark_mode_result">ダーク適用結果: %1$s\n%2$s</string>
+    <string name="dark_mode_note_pre_q">この OS（Android 10 未満）ではシステム全体のダークテーマが利用できない場合があります。</string>
     <string name="lock_task_note">Lock Task は BuildConfig.ENABLE_LOCK_TASK で有効化されています。</string>
     <string name="toast_reapplied">ポリシーを適用しました（非表示 %1$d 件、新規非表示 %2$d 件、アンインストール要求 %3$d 件）</string>
     <string name="toast_not_owner">Device Owner ではないため適用できません</string>

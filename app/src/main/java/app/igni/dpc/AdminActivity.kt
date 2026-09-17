@@ -1,10 +1,12 @@
 package app.igni.dpc
 
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import app.igni.dpc.databinding.ActivityAdminBinding
+import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.PolicyApplier
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.util.concurrent.Executors
@@ -62,6 +64,7 @@ class AdminActivity : AppCompatActivity() {
         binding.hiddenCount.text = getString(R.string.hidden_count, applier.hiddenCount())
         updateTimeoutLabel(applier.currentScreenTimeoutMs())
         updateCameraLabel(applier.detectedCameraPackages())
+        updateDarkModeLabel(applier.darkModeStatus())
         binding.allowlist.text = applier.allowlistForDisplay().joinToString("\n")
         binding.lockTaskNote.isVisible = BuildConfig.ENABLE_LOCK_TASK
         binding.btnReapply.isEnabled = isOwner
@@ -88,6 +91,29 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateDarkModeLabel(status: DarkModeStatus) {
+        val release = Build.VERSION.RELEASE ?: "?"
+        binding.darkModeSdk.text = getString(R.string.dark_mode_sdk, status.sdkInt, "Android $release")
+        binding.darkModeApis.text = getString(
+            R.string.dark_mode_apis,
+            yesNo(status.uiModeManagerAvailable),
+            yesNo(status.setNightModeActivatedAvailable),
+            yesNo(status.systemDarkThemeLikely)
+        )
+        binding.darkModeResult.text = getString(
+            R.string.dark_mode_result,
+            status.result,
+            status.detail
+        )
+        val showNote = status.sdkInt < 29
+        binding.darkModeNote.isVisible = showNote
+        if (showNote) {
+            binding.darkModeNote.text = getString(R.string.dark_mode_note_pre_q)
+        }
+    }
+
+    private fun yesNo(value: Boolean): String = if (value) "あり" else "なし"
+
     private fun reapply() {
         setBusy(true)
         executor.execute {
@@ -99,6 +125,7 @@ class AdminActivity : AppCompatActivity() {
                     updateTimeoutLabel(result.screenTimeoutMs)
                 }
                 updateCameraLabel(result.cameraPackages)
+                result.darkMode?.let { updateDarkModeLabel(it) }
                 val message = if (result.success) {
                     getString(
                         R.string.toast_reapplied,
