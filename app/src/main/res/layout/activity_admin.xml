@@ -51,17 +51,15 @@
                     android:layout_marginTop="4dp"
                     android:textAppearance="?attr/textAppearanceHeadlineSmall"
                     android:textColor="@color/igni_text"
-                    tools:text="有効（完全管理端末）" />
+                    tools:text="はい" />
 
+                <!-- Hidden: long Device Owner explanation -->
                 <TextView
                     android:id="@+id/hint"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:lineSpacingExtra="3dp"
-                    android:text="@string/hint_not_owner"
-                    android:textColor="@color/igni_muted"
-                    android:textSize="14sp" />
+                    android:visibility="gone"
+                    tools:ignore="UnusedAttribute" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -121,7 +119,7 @@
             android:layout_marginTop="20dp"
             android:textColor="@color/igni_text"
             android:textSize="14sp"
-            tools:text="現在のバージョン: 1.0.7 (8)" />
+            tools:text="現在のバージョン: 1.0.21 (22)" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnUpdate"
@@ -144,16 +142,6 @@
             android:layout_marginTop="8dp"
             android:lineSpacingExtra="3dp"
             android:text="@string/update_status_idle"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/update_note"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
 
@@ -189,16 +177,6 @@
             android:layout_marginTop="8dp"
             android:lineSpacingExtra="3dp"
             android:text="@string/line_status_idle"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/line_install_note"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
 
@@ -250,16 +228,6 @@
             android:textSize="13sp" />
 
         <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/chrome_install_note"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
             android:id="@+id/chromeDisclaimer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -271,6 +239,52 @@
             android:textSize="13sp"
             android:textStyle="bold" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnInstallTikTokLite"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
+            android:text="@string/btn_install_tiktok_lite"
+            android:textColor="@color/igni_text"
+            android:textSize="16sp"
+            app:cornerRadius="14dp"
+            app:strokeColor="@color/igni_outline" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnInstallTikTokLitePlay"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="4dp"
+            android:text="@string/btn_install_tiktok_lite_play"
+            android:textColor="@color/igni_muted"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tiktokLiteInstallStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="8dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/tiktok_lite_status_idle"
+            android:textColor="@color/igni_muted"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tiktokLiteDisclaimer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="6dp"
+            android:lineSpacingExtra="3dp"
+            android:text="@string/tiktok_lite_disclaimer"
+            android:textColor="@color/igni_orange"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
@@ -317,89 +331,6 @@
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/alive_install_note"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/googleAppStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="12dp"
-            android:lineSpacingExtra="3dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="Googleアプリ: …" />
-
-        <TextView
-            android:id="@+id/chromeBrowserStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:lineSpacingExtra="3dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="Chrome既定ブラウザ: …" />
-
-        <TextView
-            android:id="@+id/homeLayoutStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:lineSpacingExtra="3dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="ホーム配置: …" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="6dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/home_layout_note"
-            android:textColor="@color/igni_muted"
-            android:textSize="12sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="12dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/reapply_note"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/unhide_note"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/return_personal_note"
-            android:textColor="@color/igni_bad"
-            android:textSize="13sp" />
-
         <ProgressBar
             android:id="@+id/progress"
             android:layout_width="wrap_content"
@@ -408,89 +339,72 @@
             android:layout_marginTop="8dp"
             android:visibility="gone" />
 
+        <!-- Hidden diagnostics (kept for binding / optional debug) -->
+        <TextView
+            android:id="@+id/googleAppStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/chromeBrowserStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/homeLayoutStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/hiddenCount"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="16dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp"
-            tools:text="これまでに非表示にしたアプリ: 0 件" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/screenTimeout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp"
-            tools:text="画面オフタイムアウト: 1800000 ms" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/audioStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp"
-            tools:text="音声: 着信モード=SILENT / メディア=0 / 着信音=0" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/cameraPackages"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:fontFamily="monospace"
-            android:lineSpacingExtra="3dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="検出カメラ: com.android.camera2" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/darkModeSdk"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp"
-            tools:text="Android SDK: 28" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/darkModeApis"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:lineSpacingExtra="3dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="ダークAPI: …" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/darkModeResult"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:lineSpacingExtra="3dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="ダーク適用結果: success" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/darkModeSamsung"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="Samsung display_night_theme: 1" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/darkModeNote"
@@ -516,26 +430,18 @@
             android:textSize="13sp"
             android:visibility="gone" />
 
+        <!-- Hidden allowlist block -->
         <TextView
+            android:id="@+id/allowlistTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="24dp"
             android:text="@string/allowlist_title"
-            android:textColor="@color/igni_text"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/allowlist"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:fontFamily="monospace"
-            android:lineSpacingExtra="4dp"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp"
-            tools:text="com.android.settings\ncom.android.vending" />
+            android:visibility="gone" />
     </LinearLayout>
 </ScrollView>

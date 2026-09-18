@@ -13,6 +13,7 @@ import app.igni.dpc.policy.HomeLayoutHelper
 import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
+import app.igni.dpc.tiktok.TikTokLiteInstaller
 import app.igni.dpc.policy.PolicyApplier
 import app.igni.dpc.update.AppSelfUpdater
 import app.igni.dpc.update.AppUpdateChecker
@@ -50,6 +51,8 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallLinePlay.setOnClickListener { installLineViaPlay() }
         binding.btnInstallChrome.setOnClickListener { installChrome() }
         binding.btnInstallChromePlay.setOnClickListener { installChromeViaPlay() }
+        binding.btnInstallTikTokLite.setOnClickListener { installTikTokLite() }
+        binding.btnInstallTikTokLitePlay.setOnClickListener { installTikTokLiteViaPlay() }
         binding.btnInstallAlive.setOnClickListener { installAlive() }
         binding.btnOpenAlive.setOnClickListener { openAlive() }
 
@@ -131,6 +134,9 @@ class AdminActivity : AppCompatActivity() {
         binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
+        binding.tiktokLiteInstallStatus.text = TikTokLiteInstaller.lastStatusText(this)
+        binding.btnInstallTikTokLite.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallTikTokLitePlay.isEnabled = !busy && !updateBusy.get()
         binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
@@ -394,6 +400,25 @@ class AdminActivity : AppCompatActivity() {
 
 
 
+    private fun installTikTokLite() {
+        binding.tiktokLiteInstallStatus.text = "TikTokライト インストール: 開始…"
+        Toast.makeText(this, R.string.toast_tiktok_lite_install_started, Toast.LENGTH_SHORT).show()
+        executor.execute {
+            TikTokLiteInstaller.ensureTikTokLiteInstalled(this)
+            runOnUiThread {
+                binding.tiktokLiteInstallStatus.text = TikTokLiteInstaller.lastStatusText(this)
+            }
+        }
+    }
+
+    /** Explicit user action: open Play Store for TikTok Lite. */
+    private fun installTikTokLiteViaPlay() {
+        binding.tiktokLiteInstallStatus.text = "TikTokライト インストール: Play を開く…"
+        Toast.makeText(this, R.string.toast_tiktok_lite_play_opened, Toast.LENGTH_SHORT).show()
+        TikTokLiteInstaller.openPlayStore(this)
+        binding.tiktokLiteInstallStatus.text = TikTokLiteInstaller.lastStatusText(this)
+    }
+
     private fun installAlive() {
         // Button-triggered only: GitHub APK silent install (no Play).
         if (AliveInstaller.isAliveInstalled(this)) {
@@ -487,6 +512,8 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallTikTokLite.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallTikTokLitePlay.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
     }

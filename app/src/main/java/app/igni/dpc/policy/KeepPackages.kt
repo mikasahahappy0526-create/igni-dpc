@@ -162,6 +162,8 @@ class KeepPackages(private val context: Context) {
         const val CHROME_DEV_PACKAGE = "com.chrome.dev"
         const val CHROME_CANARY_PACKAGE = "com.chrome.canary"
         const val LINE_PACKAGE = "jp.naver.line.android"
+        /** TikTok Lite — Admin-button install; stay visible after policy apply. */
+        const val TIKTOK_LITE_PACKAGE = "com.zhiliaoapp.musically.go"
         /** アライブ (puchicli) — Admin-button install; stay visible after policy apply. */
         const val ALIVE_PACKAGE = "jp.puchicli.app"
 
@@ -262,6 +264,7 @@ class KeepPackages(private val context: Context) {
             PLAY_STORE_PACKAGE,
             "com.android.settings",
             LINE_PACKAGE,
+            TIKTOK_LITE_PACKAGE,
             ALIVE_PACKAGE,
         )
 
@@ -320,6 +323,8 @@ class KeepPackages(private val context: Context) {
             CHROME_CANARY_PACKAGE,
             // LINE
             LINE_PACKAGE,
+            // TikTok Lite — button install; allowlist so it stays visible
+            TIKTOK_LITE_PACKAGE,
             // アライブ (puchicli) — button install; allowlist so it stays visible
             ALIVE_PACKAGE,
             // Igni DPC itself (AdminActivity LAUNCHER icon on page 1 when OEM places it)

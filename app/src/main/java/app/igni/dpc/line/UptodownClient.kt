@@ -30,8 +30,11 @@ object UptodownClient {
     private const val LINE_PAGE_EN = "https://line.en.uptodown.com/android"
     private const val CHROME_PAGE_EN = "https://google-chrome.en.uptodown.com/android"
     private const val CHROME_PAGE_JP = "https://google-chrome.jp.uptodown.com/android"
+    private const val TIKTOK_LITE_PAGE_EN = "https://tiktok-lite-musically-go.en.uptodown.com/android"
+    private const val TIKTOK_LITE_PAGE_JP = "https://tiktok-lite.jp.uptodown.com/android"
     const val LINE_PACKAGE = "jp.naver.line.android"
     const val CHROME_PACKAGE = "com.android.chrome"
+    const val TIKTOK_LITE_PACKAGE = "com.zhiliaoapp.musically.go"
 
     /** Native getAuthApikey() seed from Uptodown Android 7.38 (libuptodown-native.so). */
     private const val AUTH_SEED = "MDGMXUMdvHJBG/vjdFgmqX6LUdy7ecfwvYNd0gyfOCs="
@@ -73,6 +76,18 @@ object UptodownClient {
                 CHROME_PAGE_JP,
                 "$CHROME_PAGE_EN/download",
                 "$CHROME_PAGE_JP/download"
+            )
+        )
+
+    /** Resolve latest TikTok Lite (com.zhiliaoapp.musically.go) CDN URL (APK or XAPK). */
+    fun resolveLatestTikTokLite(): Result<ResolvedDownload> =
+        resolveLatest(
+            TIKTOK_LITE_PACKAGE,
+            listOf(
+                TIKTOK_LITE_PAGE_EN,
+                TIKTOK_LITE_PAGE_JP,
+                "$TIKTOK_LITE_PAGE_EN/download",
+                "$TIKTOK_LITE_PAGE_JP/download"
             )
         )
 

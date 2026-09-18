@@ -66,7 +66,13 @@
     <string name="toast_chrome_play_opened">Play ストアで Chrome を開きました</string>
     <string name="chrome_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 
-
+    <string name="btn_install_tiktok_lite">TikTokライトを入れる</string>
+    <string name="btn_install_tiktok_lite_play">Playで入れる（TikTokライト）</string>
+    <string name="tiktok_lite_status_idle">TikTokライト インストール: 未試行</string>
+    <string name="tiktok_lite_install_note">管理画面のボタンからのみインストールします（ポリシー適用では自動インストールしません）。Uptodown の最新版（APK/XAPK）を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（自動では Play を開きません）。</string>
+    <string name="toast_tiktok_lite_install_started">TikTokライト インストールを開始しました</string>
+    <string name="toast_tiktok_lite_play_opened">Play ストアで TikTokライト を開きました</string>
+    <string name="tiktok_lite_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 
     <string name="btn_install_alive">アライブを入れる</string>
     <string name="btn_open_alive">アライブを開く</string>

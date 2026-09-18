@@ -238,6 +238,7 @@ class PolicyApplier(context: Context) {
             unhideKeepPackage(chromePkg, hidden, "Chrome")
         }
         unhideKeepPackage(KeepPackages.LINE_PACKAGE, hidden, "LINE")
+        unhideKeepPackage(KeepPackages.TIKTOK_LITE_PACKAGE, hidden, "TikTok Lite")
         unhideKeepPackage(KeepPackages.ALIVE_PACKAGE, hidden, "Alive")
         for (settingsPkg in KeepPackages.SETTINGS_PACKAGES) {
             unhideKeepPackage(settingsPkg, hidden, "Settings")
@@ -330,6 +331,7 @@ class PolicyApplier(context: Context) {
                 "com.android.vending",
                 "com.android.chrome",
                 KeepPackages.LINE_PACKAGE,
+                KeepPackages.TIKTOK_LITE_PACKAGE,
                 KeepPackages.ALIVE_PACKAGE,
                 appContext.packageName
             )
@@ -368,7 +370,7 @@ class PolicyApplier(context: Context) {
                 "chromeBrowser=$chromeBrowser home=${homeLayout.result}"
         )
         // Post-setup: LINE/Chrome missing → silent Uptodown only (async). Never open Play.
-        // Alive (アライブ) is Admin-button only — do NOT auto-install here.
+        // Alive / TikTok Lite are Admin-button only — do NOT auto-install here.
         LineInstaller.ensureLineInstalledAsync(appContext)
         ChromeInstaller.ensureChromeInstalledAsync(appContext)
         return ApplyResult(
