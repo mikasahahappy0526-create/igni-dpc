@@ -12,6 +12,10 @@
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Dark mode: UiModeManager / car-mode poke; DO grants via setPermissionGrantState. -->
+    <uses-permission
+        android:name="android.permission.MODIFY_DAY_NIGHT_MODE"
+        tools:ignore="ProtectedPermissions" />
     <!-- Global settings (airplane mode) via Settings.Global.putInt fallback; DO prefers DPM.setGlobalSetting. -->
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"

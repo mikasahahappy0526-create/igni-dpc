@@ -99,6 +99,21 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.30（ダークモード強制強化・car mode poke）
+
+- **ダークモード強制**: `DarkModeHelper` を新設し `PolicyApplier.applyDarkMode()` から委譲。設定書込だけでは One UI が無視する問題への対策
+  1. `DPM.setPermissionGrantState` で `MODIFY_DAY_NIGHT_MODE` / `WRITE_SECURE_SETTINGS` / `WRITE_SETTINGS` を自己付与
+  2. `Settings.System display_night_theme=1` + `Settings.Secure ui_night_mode=2` + OEM キー + 反射 DPM setSystem/SecureSetting
+  3. `UiModeManager.setNightMode(MODE_NIGHT_YES)` → API 30+ `setNightModeActivated(true)`
+  4. **Tasker/Samsung 技**: `enableCarMode` → 短待機 → `disableCarMode` のあと night を再設定（One UI がダークを実適用）
+  5. `Runtime.exec(cmd uimode night yes)` ベストエフォート
+  6. 反射 `IUiModeManager` binder `setNightMode`
+  7. Samsung `SemUiModeManager` / Knox Custom SettingsManager をクラスがあれば反射（SDK 非依存）
+  8. 成功判定: `display_night_theme==1` OR `ui_night_mode==2` OR `nightMode==YES` OR `UI_MODE_NIGHT_YES`。全プローブをログ
+  - API &lt; 29（sense3 等）はベストエフォート・クラッシュしない
+- 維持: 機内モード多経路、アライブ自動インストール、TikTok Lite 強制削除、Chrome 保護、ja_JP / Asia/Tokyo、Admin UI
+- versionCode **31** / versionName **1.0.30**
+
 ## v1.0.29（機内モード多経路・アライブ自動インストール）
 
 - **機内モード（多経路）**: `AirplaneModeHelper` を全面書き換え。各経路をログし、成功は `Settings.Global.AIRPLANE_MODE_ON` 読戻し一致のみ
