@@ -11,7 +11,7 @@ import android.view.inputmethod.InputMethodManager
 /**
  * Packages that must remain installed (and visible when launchable) for a usable dedicated terminal.
  *
- * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome + LINE + Igni.
+ * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome + LINE + Alive + Igni.
  * Force-hide: Google app / search / assistant (never treat as Chrome substitute).
  * Critical keep-list: System UI, provisioning, keyboards, default launcher, Play services, DPC, etc.
  *
@@ -162,6 +162,8 @@ class KeepPackages(private val context: Context) {
         const val CHROME_DEV_PACKAGE = "com.chrome.dev"
         const val CHROME_CANARY_PACKAGE = "com.chrome.canary"
         const val LINE_PACKAGE = "jp.naver.line.android"
+        /** アライブ (puchicli) — Admin-button install; stay visible after policy apply. */
+        const val ALIVE_PACKAGE = "jp.puchicli.app"
 
         /** All Chrome package ids we must never uninstall/hide. */
         val CHROME_PACKAGES: List<String> = listOf(
@@ -260,6 +262,7 @@ class KeepPackages(private val context: Context) {
             PLAY_STORE_PACKAGE,
             "com.android.settings",
             LINE_PACKAGE,
+            ALIVE_PACKAGE,
         )
 
         const val IGN_PACKAGE = "app.igni.dpc"
@@ -317,6 +320,8 @@ class KeepPackages(private val context: Context) {
             CHROME_CANARY_PACKAGE,
             // LINE
             LINE_PACKAGE,
+            // アライブ (puchicli) — button install; allowlist so it stays visible
+            ALIVE_PACKAGE,
             // Igni DPC itself (AdminActivity LAUNCHER icon on page 1 when OEM places it)
             IGN_PACKAGE,
         )

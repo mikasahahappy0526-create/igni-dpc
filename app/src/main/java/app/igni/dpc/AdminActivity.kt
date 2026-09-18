@@ -10,6 +10,7 @@ import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.GoogleAppStatus
 import app.igni.dpc.policy.HomeLayoutHelper
+import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.PolicyApplier
@@ -49,6 +50,8 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallLinePlay.setOnClickListener { installLineViaPlay() }
         binding.btnInstallChrome.setOnClickListener { installChrome() }
         binding.btnInstallChromePlay.setOnClickListener { installChromeViaPlay() }
+        binding.btnInstallAlive.setOnClickListener { installAlive() }
+        binding.btnOpenAlive.setOnClickListener { openAlive() }
 
         maybeReapplyAfterVersionChange()
 
@@ -128,6 +131,9 @@ class AdminActivity : AppCompatActivity() {
         binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
+        binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+        binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
+        binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
         updateGoogleLabel(applier.googleAppStatus())
         binding.homeLayoutStatus.text = applier.homeLayoutStatusText()
         val chromeOk = ChromeInstaller.isChromeInstalled(this)
@@ -387,6 +393,36 @@ class AdminActivity : AppCompatActivity() {
     }
 
 
+
+    private fun installAlive() {
+        // Button-triggered only: GitHub APK silent install (no Play).
+        if (AliveInstaller.isAliveInstalled(this)) {
+            binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+            Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
+            AliveInstaller.openAlive(this)
+            return
+        }
+        binding.aliveInstallStatus.text = "アライブ インストール: 開始…"
+        Toast.makeText(this, R.string.toast_alive_install_started, Toast.LENGTH_SHORT).show()
+        executor.execute {
+            AliveInstaller.ensureAliveInstalled(this)
+            runOnUiThread {
+                binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+            }
+        }
+    }
+
+    /** Optional: open Alive when already installed. */
+    private fun openAlive() {
+        if (AliveInstaller.openAlive(this)) {
+            Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
+            binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+        } else {
+            Toast.makeText(this, R.string.toast_alive_not_installed, Toast.LENGTH_SHORT).show()
+            binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+        }
+    }
+
     private fun confirmReturnPersonal() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.return_personal_confirm_title)
@@ -451,6 +487,8 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
+        binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
     }
 
     companion object {

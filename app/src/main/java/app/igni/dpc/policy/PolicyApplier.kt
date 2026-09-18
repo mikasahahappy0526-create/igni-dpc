@@ -86,7 +86,7 @@ data class DarkModeStatus(
  * - Hide **system** apps that are not kept (cannot safely uninstall).
  * - Never claim HOME: clear this package's persistent preferred activities every apply
  *   so the stock Samsung / OEM launcher remains home (Igni HomeActivity is disabled).
- * - Keep Chrome / Settings / Play / Camera / LINE / Igni visible (explicit unhide+enable).
+ * - Keep Chrome / Settings / Play / Camera / LINE / Alive / Igni visible (explicit unhide+enable).
  * - Force-hide (+ uninstall if possible) Google app / search (not Chrome).
  * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
  * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
@@ -200,7 +200,7 @@ class PolicyApplier(context: Context) {
         }
 
         runCatching { dpm.setUninstallBlocked(admin, appContext.packageName, true) }
-        // Hard-block uninstall of Chrome / Play / Settings / LINE (defense in depth).
+        // Hard-block uninstall of Chrome / Play / Settings / LINE / Alive (defense in depth).
         for (pkg in KeepPackages.HARD_DENY_UNINSTALL) {
             runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
         }
@@ -238,6 +238,7 @@ class PolicyApplier(context: Context) {
             unhideKeepPackage(chromePkg, hidden, "Chrome")
         }
         unhideKeepPackage(KeepPackages.LINE_PACKAGE, hidden, "LINE")
+        unhideKeepPackage(KeepPackages.ALIVE_PACKAGE, hidden, "Alive")
         for (settingsPkg in KeepPackages.SETTINGS_PACKAGES) {
             unhideKeepPackage(settingsPkg, hidden, "Settings")
         }
@@ -329,6 +330,7 @@ class PolicyApplier(context: Context) {
                 "com.android.vending",
                 "com.android.chrome",
                 KeepPackages.LINE_PACKAGE,
+                KeepPackages.ALIVE_PACKAGE,
                 appContext.packageName
             )
             lockTaskPkgs.addAll(cameras)
@@ -366,6 +368,7 @@ class PolicyApplier(context: Context) {
                 "chromeBrowser=$chromeBrowser home=${homeLayout.result}"
         )
         // Post-setup: LINE/Chrome missing → silent Uptodown only (async). Never open Play.
+        // Alive (アライブ) is Admin-button only — do NOT auto-install here.
         LineInstaller.ensureLineInstalledAsync(appContext)
         ChromeInstaller.ensureChromeInstalledAsync(appContext)
         return ApplyResult(
