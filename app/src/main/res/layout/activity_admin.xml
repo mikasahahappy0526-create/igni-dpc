@@ -190,7 +190,8 @@
             android:text="@string/line_disclaimer"
             android:textColor="@color/igni_orange"
             android:textSize="13sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnInstallChrome"
@@ -237,7 +238,8 @@
             android:text="@string/chrome_disclaimer"
             android:textColor="@color/igni_orange"
             android:textSize="13sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnInstallTikTokLite"
@@ -284,7 +286,8 @@
             android:text="@string/tiktok_lite_disclaimer"
             android:textColor="@color/igni_orange"
             android:textSize="13sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:visibility="gone" />
 
         <TextView
             android:layout_width="match_parent"

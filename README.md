@@ -99,6 +99,13 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.22（管理画面 UI ポリッシュ）
+
+- インストールボタン表記をアプリ名のみに短縮（「を入れる」削除）。Play は「Play」、アライブ起動は「開く」
+- オレンジ色の免責・注意文（`lineDisclaimer` / `chromeDisclaimer` / `tiktokLiteDisclaimer` / `darkModeNote` / `lockTaskNote`）をすべて非表示
+- インストール状態表示を日本語短文のみに（英語ステータスキーや長い詳細テールを出さない）
+- versionCode **23** / versionName **1.0.22**
+
 ## v1.0.10（Galaxy A23 UX）
 
 - **標準ホーム**: Igni HOME を完全撤廃。再適用で persistent preferred をクリアし、Samsung ランチャーに戻す
@@ -358,8 +365,7 @@ adb shell dpm set-device-owner app.igni.dpc/.AdminReceiver
 - **アプリ一覧を表示に戻す** — この DPC が**非表示にしたシステムアプリのみ**再表示（アンインストール済みユーザーアプリは復元不可）
 - **個人用に戻す（Device Owner解除）**（v1.0.16）— 確認後に非表示アプリを再表示し Device Owner を解除。イグニは通常アプリになる。アンインストール済みアプリは戻らない
 - **最新版に更新**（v1.0.17+）— GitHub API を確認し、更新があればミラー `d.apk` を取得して同じ署名キーで Device Owner として自己更新（工場出荷リセット／QR 不要）
-- **LINEを入れる**（v1.0.18+）— Uptodown 最新（APK/XAPK）をサイレントインストール。失敗時はステータスのみ（自動では Play を開かない）。「Playで入れる」で明示起動。免責文を表示
-- **Chromeを入れる**（v1.0.18+）— 既定は Uptodown サイレントのみ。Play は「Playで入れる」明示ボタンのみ。適用時に Play は開かない。Chrome は適用時に絶対アンインストール／非表示しない
+- **LINE / Chrome / TikTokライト / アライブ**（v1.0.22+）— ボタンはアプリ名のみ（「LINE」「Chrome」「TikTokライト」「アライブ」）。Play フォールバックは「Play」。アライブ起動は「開く」。ステータスは日本語短文のみ（インストール済み／未インストール／ダウンロード中／インストール中／失敗）。オレンジ色の免責・注意文は非表示
 - 現在のバージョン（versionName / versionCode）と更新ステータス
 - 現在の `SCREEN_OFF_TIMEOUT`（ms）
 - **音声**: 着信モード（SILENT/VIBRATE/…）とメディア／着信音量

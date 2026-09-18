@@ -122,13 +122,16 @@ class AdminActivity : AppCompatActivity() {
         updateCameraLabel(applier.detectedCameraPackages())
         updateDarkModeLabel(applier.darkModeStatus())
         binding.allowlist.text = applier.allowlistForDisplay().joinToString("\n")
-        binding.lockTaskNote.isVisible = BuildConfig.ENABLE_LOCK_TASK
+        binding.lockTaskNote.isVisible = false // orange notes hidden (v1.0.22+)
         val busy = binding.progress.isVisible
         binding.btnReapply.isEnabled = isOwner && !busy
         binding.btnUnhide.isEnabled = isOwner && !busy
         binding.btnReturnPersonal.isEnabled = isOwner && !busy
         binding.btnUpdate.isEnabled = !updateBusy.get()
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
+        binding.lineDisclaimer.isVisible = false
+        binding.chromeDisclaimer.isVisible = false
+        binding.tiktokLiteDisclaimer.isVisible = false
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
         binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
@@ -207,11 +210,8 @@ class AdminActivity : AppCompatActivity() {
         )
         val nightThemeLabel = status.displayNightTheme?.toString() ?: "—"
         binding.darkModeSamsung.text = getString(R.string.dark_mode_samsung, nightThemeLabel)
-        val showNote = status.sdkInt < 29
-        binding.darkModeNote.isVisible = showNote
-        if (showNote) {
-            binding.darkModeNote.text = getString(R.string.dark_mode_note_pre_q)
-        }
+        // Orange disclaimer/notes hidden for Admin UI polish (v1.0.22+)
+        binding.darkModeNote.isVisible = false
     }
 
     private fun yesNo(value: Boolean): String = if (value) "あり" else "なし"

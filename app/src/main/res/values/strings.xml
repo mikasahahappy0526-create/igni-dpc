@@ -50,33 +50,33 @@
     <string name="update_note">同じ署名キーでビルドされた GitHub Releases の最新 APK を、Device Owner として自己更新します。工場出荷リセットや QR の再読み取りは不要です。</string>
     <string name="toast_update_installing">インストールを開始しました</string>
 
-    <string name="btn_install_line">LINEを入れる</string>
-    <string name="btn_install_line_play">Playで入れる（LINE）</string>
-    <string name="line_status_idle">LINE インストール: 未試行</string>
+    <string name="btn_install_line">LINE</string>
+    <string name="btn_install_line_play">Play</string>
+    <string name="line_status_idle">未インストール</string>
     <string name="line_install_note">ポリシー適用後、LINE 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時はログとステータスのみ（自動では Play を開きません）。管理画面の「Playで入れる」から明示的に開けます。</string>
     <string name="toast_line_install_started">LINE インストールを開始しました</string>
     <string name="toast_line_play_opened">Play ストアで LINE を開きました</string>
     <string name="line_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 
-    <string name="btn_install_chrome">Chromeを入れる</string>
-    <string name="btn_install_chrome_play">Playで入れる（Chrome）</string>
-    <string name="chrome_status_idle">Chrome インストール: 未試行</string>
+    <string name="btn_install_chrome">Chrome</string>
+    <string name="btn_install_chrome_play">Play</string>
+    <string name="chrome_status_idle">未インストール</string>
     <string name="chrome_install_note">ポリシー適用後、Chrome 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします（Playは自動で開きません）。利用可能なら http/https の既定ハンドラに Chrome を設定します。Googleアプリは Chrome の代替にしません。適用時に Chrome は絶対にアンインストール／非表示しません。</string>
     <string name="toast_chrome_install_started">Chrome インストールを開始しました</string>
     <string name="toast_chrome_play_opened">Play ストアで Chrome を開きました</string>
     <string name="chrome_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 
-    <string name="btn_install_tiktok_lite">TikTokライトを入れる</string>
-    <string name="btn_install_tiktok_lite_play">Playで入れる（TikTokライト）</string>
-    <string name="tiktok_lite_status_idle">TikTokライト インストール: 未試行</string>
+    <string name="btn_install_tiktok_lite">TikTokライト</string>
+    <string name="btn_install_tiktok_lite_play">Play</string>
+    <string name="tiktok_lite_status_idle">未インストール</string>
     <string name="tiktok_lite_install_note">管理画面のボタンからのみインストールします（ポリシー適用では自動インストールしません）。Uptodown の最新版（APK/XAPK）を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（自動では Play を開きません）。</string>
     <string name="toast_tiktok_lite_install_started">TikTokライト インストールを開始しました</string>
     <string name="toast_tiktok_lite_play_opened">Play ストアで TikTokライト を開きました</string>
     <string name="tiktok_lite_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
 
-    <string name="btn_install_alive">アライブを入れる</string>
-    <string name="btn_open_alive">アライブを開く</string>
-    <string name="alive_status_idle">アライブ インストール: 未試行</string>
+    <string name="btn_install_alive">アライブ</string>
+    <string name="btn_open_alive">開く</string>
+    <string name="alive_status_idle">未インストール</string>
     <string name="alive_install_note">管理画面のボタンからのみインストールします（ポリシー適用では自動インストールしません）。GitHub の最新 APK を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（Play は開きません）。インストール済みなら「アライブを開く」で起動できます。</string>
     <string name="toast_alive_install_started">アライブ インストールを開始しました</string>
     <string name="toast_alive_opened">アライブを開きました</string>

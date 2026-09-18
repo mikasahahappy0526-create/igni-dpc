@@ -133,23 +133,21 @@ object LineInstaller {
         }.getOrDefault(false)
     }
 
-    /** Short status line for Admin UI. */
+
+    /** Short Japanese-only status for Admin UI (no English keys / long tails). */
     fun lastStatusText(context: Context): String {
         val prefs = prefs(context)
-        val status = prefs.getString(KEY_STATUS, null) ?: return "LINE インストール: 未試行"
-        val detail = prefs.getString(KEY_DETAIL, "").orEmpty()
-        val at = prefs.getLong(KEY_AT, 0L)
-        val whenLabel = if (at > 0L) {
-            val agoMin = ((System.currentTimeMillis() - at) / 60_000L).coerceAtLeast(0)
-            if (agoMin < 1) "たった今" else "${agoMin}分前"
-        } else {
-            ""
+        val status = prefs.getString(KEY_STATUS, null)
+        if (status == null) {
+            return if (isLineInstalled(context)) "インストール済み" else "未インストール"
         }
-        val prefix = "LINE インストール: $status"
-        return buildString {
-            append(prefix)
-            if (detail.isNotBlank()) append(" — ").append(detail)
-            if (whenLabel.isNotBlank()) append(" ($whenLabel)")
+        return when (status) {
+            "already_installed", "success", "browser_preferred" -> "インストール済み"
+            "missing" -> "未インストール"
+            "resolving", "downloading" -> "ダウンロード中"
+            "installing" -> "インストール中"
+            "failure", "silent_failed" -> "失敗"
+            else -> if (isLineInstalled(context)) "インストール済み" else "未インストール"
         }
     }
 
