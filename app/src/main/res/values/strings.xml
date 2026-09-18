@@ -69,7 +69,7 @@
     <string name="btn_install_tiktok_lite">TikTokライト</string>
     <string name="btn_install_tiktok_lite_play">Play</string>
     <string name="tiktok_lite_status_idle">未インストール</string>
-    <string name="tiktok_lite_install_note">管理画面のボタンからのみインストールします（ポリシー適用では自動インストールしません）。Uptodown の最新版（APK/XAPK）を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（自動では Play を開きません）。</string>
+    <string name="tiktok_lite_install_note">ホーム到達／ポリシー適用後に自動インストールを試行します。失敗時は管理画面のボタンで再試行できます。Uptodown の最新版（APK/XAPK）を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（自動では Play を開きません）。</string>
     <string name="toast_tiktok_lite_install_started">TikTokライト インストールを開始しました</string>
     <string name="toast_tiktok_lite_play_opened">Play ストアで TikTokライト を開きました</string>
     <string name="tiktok_lite_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
@@ -77,7 +77,7 @@
     <string name="btn_install_alive">アライブ</string>
     <string name="btn_open_alive">開く</string>
     <string name="alive_status_idle">未インストール</string>
-    <string name="alive_install_note">管理画面のボタンからのみインストールします（ポリシー適用では自動インストールしません）。GitHub の最新 APK を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（Play は開きません）。インストール済みなら「アライブを開く」で起動できます。</string>
+    <string name="alive_install_note">ホーム到達／ポリシー適用後に自動インストールを試行します。失敗時は管理画面のボタンで再試行できます。GitHub の最新 APK を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（Play は開きません）。インストール済みなら「アライブを開く」で起動できます。</string>
     <string name="toast_alive_install_started">アライブ インストールを開始しました</string>
     <string name="toast_alive_opened">アライブを開きました</string>
     <string name="toast_alive_not_installed">アライブはまだインストールされていません</string>
@@ -105,5 +105,7 @@
     <string name="toast_airplane_on">機内モードをオンにしました</string>
     <string name="toast_airplane_off">機内モードをオフにしました</string>
     <string name="toast_airplane_failed">機内モードの切替に失敗しました</string>
+    <string name="toast_airplane_open_settings">この端末では自動切替できないため設定画面を開きました</string>
+    <string name="airplane_status_idle"></string>
     <string name="toast_airplane_not_owner">Device Owner ではないため機内モードを切り替えできません</string>
 </resources>

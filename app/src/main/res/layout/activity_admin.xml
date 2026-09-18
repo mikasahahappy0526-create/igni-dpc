@@ -161,6 +161,18 @@
             android:textColor="@color/igni_text"
             android:textSize="16sp" />
 
+        <TextView
+            android:id="@+id/airplaneModeStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text=""
+            android:textColor="@color/igni_muted"
+            android:textSize="12sp" />
+
         <!-- LINE: [ LINE ] [ Play ] -->
         <LinearLayout
             android:layout_width="match_parent"

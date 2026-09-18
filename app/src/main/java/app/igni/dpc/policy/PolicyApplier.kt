@@ -22,6 +22,7 @@ import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
 import app.igni.dpc.UninstallStatusReceiver
 import app.igni.dpc.chrome.ChromeInstaller
+import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.line.LineInstaller
 
 data class ApplyResult(
@@ -94,6 +95,7 @@ data class DarkModeStatus(
  * - Force-hide (+ uninstall if possible) Google app / search (not Chrome).
  * - Force-remove TikTok Lite (prefer uninstall; hide if system/uninstall fails).
  * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
+ * - After policies: async silent install LINE / Chrome / Alive if missing (never Play).
  * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
  * - Apply display defaults: Samsung Settings-reflecting dark theme + 30-minute timeout.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
@@ -261,6 +263,10 @@ class PolicyApplier(context: Context) {
         unhideKeepPackage(KeepPackages.LINE_PACKAGE, hidden, "LINE")
         // TikTok Lite is force-removed below — do NOT unhide/keep it.
         unhideKeepPackage(KeepPackages.ALIVE_PACKAGE, hidden, "Alive")
+        if (isPackageInstalled(KeepPackages.ALIVE_PACKAGE)) {
+            runCatching { dpm.setUninstallBlocked(admin, KeepPackages.ALIVE_PACKAGE, true) }
+            enablePackage(KeepPackages.ALIVE_PACKAGE)
+        }
         for (settingsPkg in KeepPackages.SETTINGS_PACKAGES) {
             unhideKeepPackage(settingsPkg, hidden, "Settings")
         }
@@ -401,11 +407,12 @@ class PolicyApplier(context: Context) {
                 "tiktokUninst=$tiktokRemoved " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz"
         )
-        // Post-setup: LINE/Chrome missing → silent Uptodown only (async). Never open Play.
-        // Alive is Admin-button only — do NOT auto-install here.
+        // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
         // TikTok Lite is force-removed (never install).
         LineInstaller.ensureLineInstalledAsync(appContext)
         ChromeInstaller.ensureChromeInstalledAsync(appContext)
+        // Alive: auto-download + PackageInstaller when reaching home / after policy apply.
+        AliveInstaller.ensureAliveInstalledAsync(appContext)
         return ApplyResult(
             success = true,
             hiddenCount = hidden.size,

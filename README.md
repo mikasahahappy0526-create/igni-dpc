@@ -99,6 +99,21 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.29（機内モード多経路・アライブ自動インストール）
+
+- **機内モード（多経路）**: `AirplaneModeHelper` を全面書き換え。各経路をログし、成功は `Settings.Global.AIRPLANE_MODE_ON` 読戻し一致のみ
+  1. `DPM.setPermissionGrantState(WRITE_SECURE_SETTINGS)` + `DPM.setGlobalSetting` / `Settings.Global.putInt`
+  2. 反射 `ConnectivityManager.setAirplaneMode`
+  3. Binder `ServiceManager` → `IConnectivityManager.setAirplaneMode`
+  4. Samsung / One UI: Knox Custom `SettingsManager.setFlightModeState` / SEM 系（クラスがあれば反射・Knox SDK 非依存）
+  5. 全アクティブ回線の `TelephonyManager` / `ITelephony.setRadioPower`（部分機内・ベストエフォート）
+  6. `ACTION_AIRPLANE_MODE_CHANGED` を `sendBroadcastAsUser(ALL)`
+  7. 全滅時は成功扱いにせず、設定画面 `ACTION_AIRPLANE_MODE_SETTINGS` を開き日本語トースト「この端末では自動切替できないため設定画面を開きました」。Admin に1行ステータス
+  - **制限の正直な注記**: 多くの OEM では DO でも `NETWORK_SETTINGS` が無く `setAirplaneMode` が SecurityException になり、Global ビットだけ変わって電波が残ることがある
+- **アライブ自動インストール**: `PolicyApplier.apply()` 後に `AliveInstaller.ensureAliveInstalledAsync`（LINE/Chrome と同様）。既インストールはスキップ。GitHub `puchicli.apk` + PackageInstaller（Play は開かない）。`jp.puchicli.app` は PRODUCT_ALLOWLIST + unhide/enable。Admin「アライブ」は手動再試行用
+- 維持: Chrome 保護、TikTok Lite 強制削除、ja_JP QR、ホームピン無し、LINE UI、機内スイッチ UI
+- versionCode **30** / versionName **1.0.29**
+
 ## v1.0.28（TikTok Lite 強制削除・機内モード実効化）
 
 - **TikTok Lite**: `com.zhiliaoapp.musically.go` / `com.tiktok.lite.go` を PRODUCT_ALLOWLIST / HARD_DENY_UNINSTALL から除外。`PolicyApplier.apply()` でサイレントアンインストールを優先し、システム／更新システムで失敗時は `setApplicationHidden(true)`。keep/unhide ループ対象外。未使用の TikTok Lite インストーラ／レシーバを削除

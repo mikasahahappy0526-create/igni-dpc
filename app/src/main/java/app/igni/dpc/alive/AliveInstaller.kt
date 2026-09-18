@@ -19,7 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Installs アライブ ([KeepPackages.ALIVE_PACKAGE]) from a fixed GitHub Releases APK URL.
  *
  * Simpler than LINE/Chrome: no Uptodown — direct APK download + PackageInstaller.
- * **Admin button only** — never call from [app.igni.dpc.policy.PolicyApplier.apply].
+ * Called from [app.igni.dpc.policy.PolicyApplier.apply] (auto on home / after setup)
+ * and from Admin「アライブ」for manual retry.
  * On failure: status text only — never open Play.
  */
 object AliveInstaller {

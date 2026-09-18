@@ -463,12 +463,22 @@ class AdminActivity : AppCompatActivity() {
 
     private var airplaneSwitchProgrammatic = false
 
+    private var airplaneBusy = false
+
     private fun refreshAirplaneSwitch(isOwner: Boolean, busy: Boolean) {
+        // Do not fight an in-flight toggle; onResume will refresh after it finishes.
+        if (airplaneBusy) {
+            binding.switchAirplaneMode.isEnabled = false
+            return
+        }
         val on = AirplaneModeHelper.isAirplaneModeOn(this)
         airplaneSwitchProgrammatic = true
         binding.switchAirplaneMode.isChecked = on
         airplaneSwitchProgrammatic = false
         binding.switchAirplaneMode.isEnabled = isOwner && !busy
+        if (binding.airplaneModeStatus.text.isNullOrBlank()) {
+            binding.airplaneModeStatus.text = if (on) "機内モード: オン" else "機内モード: オフ"
+        }
     }
 
     private fun onAirplaneSwitchChanged(wantOn: Boolean) {
@@ -478,20 +488,35 @@ class AdminActivity : AppCompatActivity() {
             airplaneSwitchProgrammatic = true
             binding.switchAirplaneMode.isChecked = AirplaneModeHelper.isAirplaneModeOn(this)
             airplaneSwitchProgrammatic = false
+            binding.airplaneModeStatus.text = "DOではない"
             Toast.makeText(this, R.string.toast_airplane_not_owner, Toast.LENGTH_SHORT).show()
             return
         }
+        airplaneBusy = true
         binding.switchAirplaneMode.isEnabled = false
+        binding.airplaneModeStatus.text = "切替中…"
         executor.execute {
             val result = AirplaneModeHelper.setAirplaneMode(this, wantOn)
             runOnUiThread {
+                airplaneBusy = false
                 airplaneSwitchProgrammatic = true
                 binding.switchAirplaneMode.isChecked = result.enabled
                 airplaneSwitchProgrammatic = false
                 binding.switchAirplaneMode.isEnabled = PolicyApplier(this).isDeviceOwner()
+                binding.airplaneModeStatus.text = result.statusLineJa.ifBlank {
+                    if (result.success) {
+                        if (result.enabled) "機内モード: オン" else "機内モード: オフ"
+                    } else {
+                        "切替失敗"
+                    }
+                }
+                if (result.openSettings) {
+                    AirplaneModeHelper.openAirplaneSettings(this)
+                }
                 val msg = when {
                     result.success && result.enabled -> getString(R.string.toast_airplane_on)
                     result.success && !result.enabled -> getString(R.string.toast_airplane_off)
+                    result.openSettings -> getString(R.string.toast_airplane_open_settings)
                     else -> result.messageJa.ifBlank { getString(R.string.toast_airplane_failed) }
                 }
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
