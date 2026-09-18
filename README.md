@@ -99,6 +99,17 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.27（機内モード切替・Admin UI整理）
+
+- **Admin UI**: Chrome / TikTokライトのインストール行（ボタン＋Play）を削除。プリインストール Chrome の許可リスト保護は維持。TikTokライトも許可リストは残す
+- **機内モード**: 管理画面に「機内モード」MaterialSwitch を追加（更新の下・LINEの上）。Device Owner として `Settings.Global.AIRPLANE_MODE_ON` を切替
+  - 優先: 反射 `DevicePolicyManager.setGlobalSetting`
+  - フォールバック: `Settings.Global.putInt` + `WRITE_SECURE_SETTINGS`
+  - 成功後に `Intent.ACTION_AIRPLANE_MODE_CHANGED`（`state` extra）を `sendBroadcastAsUser`（失敗時は `sendBroadcast`）
+  - 失敗時は短い日本語トースト。`onResume` でスイッチ状態を再読込
+- 維持: 日本語ロケール / Asia/Tokyo、LEAVE_ALL、ホームピン無し、Play 自動オープン無し、LINE / アライブ横並び
+- versionCode **28** / versionName **1.0.27**
+
 ## v1.0.26（システム言語を日本語に）
 
 セットアップ中／適用後も端末が英語のまま残る問題への対策。

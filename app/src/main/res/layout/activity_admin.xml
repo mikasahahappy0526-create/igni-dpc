@@ -147,6 +147,20 @@
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
 
+
+        <!-- 機内モード: compact toggle near top actions -->
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchAirplaneMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="10dp"
+            android:minHeight="40dp"
+            android:paddingVertical="4dp"
+            android:text="@string/airplane_mode_label"
+            android:textColor="@color/igni_text"
+            android:textSize="16sp" />
+
         <!-- LINE: [ LINE ] [ Play ] -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -205,121 +219,7 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
-        <!-- Chrome: [ Chrome ] [ Play ] -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnInstallChrome"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:text="@string/btn_install_chrome"
-                android:textColor="@color/igni_text"
-                android:textSize="16sp"
-                app:cornerRadius="14dp"
-                app:strokeColor="@color/igni_outline" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnInstallChromePlay"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="88dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="4dp"
-                android:minWidth="0dp"
-                android:text="@string/btn_install_chrome_play"
-                android:textColor="@color/igni_muted"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/chromeInstallStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:text="@string/chrome_status_idle"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/chromeDisclaimer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="6dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/chrome_disclaimer"
-            android:textColor="@color/igni_orange"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-
-        <!-- TikTokライト: [ TikTokライト ] [ Play ] -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="10dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnInstallTikTokLite"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:text="@string/btn_install_tiktok_lite"
-                android:textColor="@color/igni_text"
-                android:textSize="16sp"
-                app:cornerRadius="14dp"
-                app:strokeColor="@color/igni_outline" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnInstallTikTokLitePlay"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="88dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="4dp"
-                android:minWidth="0dp"
-                android:text="@string/btn_install_tiktok_lite_play"
-                android:textColor="@color/igni_muted"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tiktokLiteInstallStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="4dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:text="@string/tiktok_lite_status_idle"
-            android:textColor="@color/igni_muted"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/tiktokLiteDisclaimer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="6dp"
-            android:lineSpacingExtra="3dp"
-            android:text="@string/tiktok_lite_disclaimer"
-            android:textColor="@color/igni_orange"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
 
         <TextView
             android:layout_width="match_parent"

@@ -12,6 +12,10 @@
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Global settings (airplane mode) via Settings.Global.putInt fallback; DO prefers DPM.setGlobalSetting. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
     <!-- Silent / manner + setStreamVolume(0) on policy apply. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Optional DND interruption filter (best-effort; may require user grant on some OEMs). -->

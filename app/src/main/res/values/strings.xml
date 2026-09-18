@@ -100,4 +100,10 @@
     <string name="return_personal_status_success">個人用に戻す: 成功（Device Owner = いいえ）</string>
     <string name="return_personal_status_failed">個人用に戻す: 失敗 — %1$s</string>
     <string name="return_personal_status_not_owner">個人用に戻す: Device Owner ではありません</string>
+
+    <string name="airplane_mode_label">機内モード</string>
+    <string name="toast_airplane_on">機内モードをオンにしました</string>
+    <string name="toast_airplane_off">機内モードをオフにしました</string>
+    <string name="toast_airplane_failed">機内モードの切替に失敗しました</string>
+    <string name="toast_airplane_not_owner">Device Owner ではないため機内モードを切り替えできません</string>
 </resources>

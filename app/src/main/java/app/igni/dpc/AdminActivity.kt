@@ -10,9 +10,9 @@ import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.GoogleAppStatus
 import app.igni.dpc.alive.AliveInstaller
+import app.igni.dpc.airplane.AirplaneModeHelper
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
-import app.igni.dpc.tiktok.TikTokLiteInstaller
 import app.igni.dpc.policy.PolicyApplier
 import app.igni.dpc.update.AppSelfUpdater
 import app.igni.dpc.update.AppUpdateChecker
@@ -48,12 +48,11 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallLine.setOnClickListener { installLine() }
         binding.btnInstallLinePlay.setOnClickListener { installLineViaPlay() }
-        binding.btnInstallChrome.setOnClickListener { installChrome() }
-        binding.btnInstallChromePlay.setOnClickListener { installChromeViaPlay() }
-        binding.btnInstallTikTokLite.setOnClickListener { installTikTokLite() }
-        binding.btnInstallTikTokLitePlay.setOnClickListener { installTikTokLiteViaPlay() }
         binding.btnInstallAlive.setOnClickListener { installAlive() }
         binding.btnOpenAlive.setOnClickListener { openAlive() }
+        binding.switchAirplaneMode.setOnCheckedChangeListener { _, isChecked ->
+            onAirplaneSwitchChanged(isChecked)
+        }
 
         maybeReapplyAfterVersionChange()
 
@@ -129,19 +128,12 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.isEnabled = !updateBusy.get()
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
         binding.lineDisclaimer.isVisible = false
-        binding.chromeDisclaimer.isVisible = false
-        binding.tiktokLiteDisclaimer.isVisible = false
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
-        binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
-        binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
-        binding.tiktokLiteInstallStatus.text = TikTokLiteInstaller.lastStatusText(this)
-        binding.btnInstallTikTokLite.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallTikTokLitePlay.isEnabled = !busy && !updateBusy.get()
         binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
+        refreshAirplaneSwitch(isOwner = isOwner, busy = busy)
         updateGoogleLabel(applier.googleAppStatus())
         val chromeOk = ChromeInstaller.isChromeInstalled(this)
         binding.chromeBrowserStatus.text = getString(
@@ -365,53 +357,12 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
-    private fun installChrome() {
-        // Default: silent Uptodown only (no Play).
-        binding.chromeInstallStatus.text = "Chrome インストール: サイレント開始…"
-        Toast.makeText(this, R.string.toast_chrome_install_started, Toast.LENGTH_SHORT).show()
-        executor.execute {
-            ChromeInstaller.ensureChromeInstalled(this)
-            runOnUiThread {
-                binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
-            }
-        }
-    }
-
     /** Explicit user action: open Play Store for LINE. */
     private fun installLineViaPlay() {
         binding.lineInstallStatus.text = "LINE インストール: Play を開く…"
         Toast.makeText(this, R.string.toast_line_play_opened, Toast.LENGTH_SHORT).show()
         LineInstaller.openPlayStore(this)
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
-    }
-
-    /** Explicit user action: open Play Store for Chrome. */
-    private fun installChromeViaPlay() {
-        binding.chromeInstallStatus.text = "Chrome インストール: Play を開く…"
-        Toast.makeText(this, R.string.toast_chrome_play_opened, Toast.LENGTH_SHORT).show()
-        ChromeInstaller.openPlayStore(this)
-        binding.chromeInstallStatus.text = ChromeInstaller.lastStatusText(this)
-    }
-
-
-
-    private fun installTikTokLite() {
-        binding.tiktokLiteInstallStatus.text = "TikTokライト インストール: 開始…"
-        Toast.makeText(this, R.string.toast_tiktok_lite_install_started, Toast.LENGTH_SHORT).show()
-        executor.execute {
-            TikTokLiteInstaller.ensureTikTokLiteInstalled(this)
-            runOnUiThread {
-                binding.tiktokLiteInstallStatus.text = TikTokLiteInstaller.lastStatusText(this)
-            }
-        }
-    }
-
-    /** Explicit user action: open Play Store for TikTok Lite. */
-    private fun installTikTokLiteViaPlay() {
-        binding.tiktokLiteInstallStatus.text = "TikTokライト インストール: Play を開く…"
-        Toast.makeText(this, R.string.toast_tiktok_lite_play_opened, Toast.LENGTH_SHORT).show()
-        TikTokLiteInstaller.openPlayStore(this)
-        binding.tiktokLiteInstallStatus.text = TikTokLiteInstaller.lastStatusText(this)
     }
 
     private fun installAlive() {
@@ -505,12 +456,47 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallChrome.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallChromePlay.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallTikTokLite.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallTikTokLitePlay.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
+        binding.switchAirplaneMode.isEnabled = owner && !busy
+    }
+
+    private var airplaneSwitchProgrammatic = false
+
+    private fun refreshAirplaneSwitch(isOwner: Boolean, busy: Boolean) {
+        val on = AirplaneModeHelper.isAirplaneModeOn(this)
+        airplaneSwitchProgrammatic = true
+        binding.switchAirplaneMode.isChecked = on
+        airplaneSwitchProgrammatic = false
+        binding.switchAirplaneMode.isEnabled = isOwner && !busy
+    }
+
+    private fun onAirplaneSwitchChanged(wantOn: Boolean) {
+        if (airplaneSwitchProgrammatic) return
+        val applier = PolicyApplier(this)
+        if (!applier.isDeviceOwner()) {
+            airplaneSwitchProgrammatic = true
+            binding.switchAirplaneMode.isChecked = AirplaneModeHelper.isAirplaneModeOn(this)
+            airplaneSwitchProgrammatic = false
+            Toast.makeText(this, R.string.toast_airplane_not_owner, Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.switchAirplaneMode.isEnabled = false
+        executor.execute {
+            val result = AirplaneModeHelper.setAirplaneMode(this, wantOn)
+            runOnUiThread {
+                airplaneSwitchProgrammatic = true
+                binding.switchAirplaneMode.isChecked = result.enabled
+                airplaneSwitchProgrammatic = false
+                binding.switchAirplaneMode.isEnabled = PolicyApplier(this).isDeviceOwner()
+                val msg = when {
+                    result.success && result.enabled -> getString(R.string.toast_airplane_on)
+                    result.success && !result.enabled -> getString(R.string.toast_airplane_off)
+                    else -> result.messageJa.ifBlank { getString(R.string.toast_airplane_failed) }
+                }
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     companion object {
