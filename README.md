@@ -99,6 +99,14 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.24（プリインストール Chrome 保護）
+
+- **QR**: `PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED=true` を easy/povo ペイロードに追加（プロビジョニング中のシステムアプリ無効化を防止）
+- **PolicyApplier**: 非表示／アンインストールループの前に Chrome 系を `setUninstallBlocked` + unhide + enable。プリインストール検出を明示ログ
+- **ChromeInstaller**: PackageManager 上に Chrome 系があれば Uptodown 再インストールしない（無効化済みでも enable+unhide のみ）
+- **Trichrome**: `com.google.android.trichromelibrary*` を keep / 非アンインストール（Chrome 依存）
+- versionCode **25** / versionName **1.0.24**
+
 ## v1.0.23（インストール行を横並び）
 
 - 管理画面のインストール操作を縦積みから **1行横並び** に変更: `[アプリ名] [Play]`（アライブは `[アライブ] [開く]`）

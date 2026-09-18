@@ -26,9 +26,10 @@ import java.util.zip.ZipFile
 /**
  * Ensures Chrome ([KeepPackages.CHROME_PACKAGE]) is installed after Device Owner policy apply.
  *
- * Strategy (v1.0.19 silent-only auto):
- * 1. If package present but DPM-hidden / disabled → unhide / enable; treat as installed only if usable.
- * 2. If missing → Uptodown download + PackageInstaller only (no Play).
+ * Strategy (v1.0.24 preserve-preinstall):
+ * 1. If any Chrome-family package is present in PackageManager (even disabled/hidden) →
+ *    enable+unhide only; **never** Uptodown reinstall/replace the stock preinstall.
+ * 2. If truly absent → Uptodown download + PackageInstaller only (no Play).
  * 3. When usable → best-effort DPM persistent preferred for http/https VIEW (Chrome, not Google app).
  * 4. Hard failures → log + status prefs only; never open Play from auto paths.
  * 5. Admin UI may call [openPlayStore] as an explicit user action.
@@ -67,9 +68,10 @@ object ChromeInstaller {
      */
     fun ensureChromeInstalledPrompt(context: Context) {
         val app = context.applicationContext
-        if (isChromeInstalled(app)) {
-            Log.i(TAG, "ensureChromeInstalledPrompt: Chrome usable; skip")
-            persist(app, "already_installed", "Chrome はインストール済み")
+        if (isChromeFamilyPresent(app)) {
+            preservePresentChrome(app)
+            Log.i(TAG, "ensureChromeInstalledPrompt: Chrome-family present; preserved (no download)")
+            persist(app, "already_installed", "Chrome は端末に存在（プリインストール保護）")
             return
         }
         Log.i(TAG, "ensureChromeInstalledPrompt: Chrome missing — status only + silent async (no Play)")
@@ -92,10 +94,21 @@ object ChromeInstaller {
             it.mkdirs()
         }
         try {
-            if (isChromeInstalled(app)) {
-                Log.i(TAG, "Chrome already installed; skip")
-                persist(app, "already_installed", "Chrome はインストール済み")
-                preferChromeAsBrowser(app)
+            // Presence wins over "usable": never replace a preinstalled / disabled Chrome.
+            if (isChromeFamilyPresent(app)) {
+                val usable = preservePresentChrome(app)
+                Log.i(
+                    TAG,
+                    "Chrome-family already present on device; skip Uptodown download/reinstall " +
+                        "(usable=$usable). Preserving stock/preinstall."
+                )
+                persist(
+                    app,
+                    "already_installed",
+                    if (usable) "Chrome はインストール済み（プリインストール保護）"
+                    else "Chrome パッケージ検出 — 有効化のみ（ダウンロードなし）"
+                )
+                if (usable) preferChromeAsBrowser(app)
                 return
             }
 
@@ -147,6 +160,71 @@ object ChromeInstaller {
         } finally {
             busy.set(false)
         }
+    }
+
+    /**
+     * True if any Chrome-family package is registered with PackageManager,
+     * including disabled components. Does **not** require the app to be usable.
+     * Used to decide whether download/reinstall is allowed (never when present).
+     */
+    fun isChromeFamilyPresent(context: Context): Boolean {
+        val pm = context.applicationContext.packageManager
+        val flags = PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
+        for (pkg in KeepPackages.CHROME_PACKAGES) {
+            val present = runCatching {
+                pm.getApplicationInfo(pkg, flags)
+                true
+            }.getOrDefault(false)
+            if (present) {
+                Log.i(TAG, "Chrome-family package present: $pkg")
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Enable + unhide every present Chrome-family package. Never downloads.
+     * @return true if [KeepPackages.CHROME_PACKAGE] is usable afterward.
+     */
+    fun preservePresentChrome(context: Context): Boolean {
+        val app = context.applicationContext
+        val pm = app.packageManager
+        val flags = PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
+        val dpm = app.getSystemService(DevicePolicyManager::class.java)
+        val isDo = dpm != null && dpm.isDeviceOwnerApp(app.packageName)
+        val admin = if (isDo) AdminReceiver.componentName(app) else null
+
+        for (pkg in KeepPackages.CHROME_PACKAGES) {
+            val present = runCatching {
+                pm.getApplicationInfo(pkg, flags)
+                true
+            }.getOrDefault(false)
+            if (!present) continue
+
+            val flagsInfo = runCatching { pm.getApplicationInfo(pkg, flags).flags }.getOrDefault(0)
+            val system = (flagsInfo and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                (flagsInfo and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            if (system) {
+                Log.i(TAG, "Preserving preinstalled Chrome: $pkg (enable+unhide; no Uptodown)")
+            } else {
+                Log.i(TAG, "Preserving installed Chrome: $pkg (enable+unhide; no Uptodown)")
+            }
+
+            if (isDo && dpm != null && admin != null) {
+                runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
+                runCatching { dpm.setApplicationHidden(admin, pkg, false) }
+            }
+            runCatching {
+                pm.setApplicationEnabledSetting(
+                    pkg,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    0
+                )
+            }.onFailure { Log.w(TAG, "Failed to enable $pkg", it) }
+        }
+
+        return isChromeInstalled(app)
     }
 
     /**

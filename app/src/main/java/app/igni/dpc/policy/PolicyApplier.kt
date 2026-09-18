@@ -208,6 +208,11 @@ class PolicyApplier(context: Context) {
             runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
         }
 
+        // BEFORE any hide/uninstall loops: preserve preinstalled / present Chrome-family.
+        val hiddenEarly = store.mutableCopy()
+        preserveChromeFamilyEarly(hiddenEarly)
+        store.replace(hiddenEarly)
+
         val cameras = keep.detectCameraPackages()
         Log.i(TAG, "Camera keep/unhide set (${cameras.size}): ${cameras.sorted().joinToString()}")
 
@@ -233,9 +238,20 @@ class PolicyApplier(context: Context) {
         }
         Log.i(TAG, "Camera unhide pass done: unhidden=$camerasUnhidden kept=${cameras.size}")
 
-        // Chrome must stay usable: never leave it hidden; drop from HiddenStore.
+        // Chrome must stay usable: never leave it hidden; drop from HiddenStore; enable.
         for (chromePkg in KeepPackages.CHROME_PACKAGES) {
             unhideKeepPackage(chromePkg, hidden, "Chrome")
+            if (isPackageInstalled(chromePkg)) {
+                runCatching { dpm.setUninstallBlocked(admin, chromePkg, true) }
+                enablePackage(chromePkg)
+            }
+        }
+        // Trichrome shared libs: never hide/uninstall when Chrome is kept.
+        for (pkg in installedPackageNames()) {
+            if (!keep.isTrichromePackage(pkg)) continue
+            unhideKeepPackage(pkg, hidden, "Trichrome")
+            runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
+            // Do not force-enable trichrome libs (no launcher); just keep unhidden/blocked.
         }
         unhideKeepPackage(KeepPackages.LINE_PACKAGE, hidden, "LINE")
         unhideKeepPackage(KeepPackages.TIKTOK_LITE_PACKAGE, hidden, "TikTok Lite")
@@ -292,6 +308,7 @@ class PolicyApplier(context: Context) {
             if (pkg == appContext.packageName) continue
             if (pkg in cameras) continue
             if (pkg in KeepPackages.CHROME_PACKAGES) continue
+            if (keep.isTrichromePackage(pkg)) continue
 
             if (isSystemOrUpdatedSystemApp(pkg)) {
                 // System bloat: hide only (never uninstall). Same launchable scope as prior releases.
@@ -485,6 +502,10 @@ class PolicyApplier(context: Context) {
         }
         if (packageName in KeepPackages.CHROME_PACKAGES) {
             Log.w(TAG, "Chrome-family uninstall skipped for $packageName")
+            return false
+        }
+        if (keep.isTrichromePackage(packageName)) {
+            Log.w(TAG, "Trichrome uninstall skipped for $packageName")
             return false
         }
 
@@ -1237,6 +1258,57 @@ class PolicyApplier(context: Context) {
         }
     }
 
+    /**
+     * Early Chrome / Trichrome preserve — runs before hide/uninstall loops.
+     * For every installed Chrome-family package: uninstall-blocked, unhide, enable,
+     * drop from HiddenStore. Logs clearly when a preinstalled Chrome is preserved.
+     */
+    private fun preserveChromeFamilyEarly(hidden: MutableSet<String>) {
+        val installed = installedPackageNames()
+        var preserved = 0
+        for (pkg in KeepPackages.CHROME_PACKAGES) {
+            if (pkg !in installed) continue
+            runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
+            val wasHidden = runCatching { dpm.isApplicationHidden(admin, pkg) }.getOrDefault(false)
+            runCatching { dpm.setApplicationHidden(admin, pkg, false) }
+            enablePackage(pkg)
+            if (hidden.remove(pkg)) {
+                Log.i(TAG, "Chrome preserve: removed $pkg from HiddenStore")
+            }
+            preserved++
+            val flags = runCatching {
+                appContext.packageManager.getApplicationInfo(pkg, 0).flags
+            }.getOrDefault(0)
+            val system = (flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                (flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            if (system) {
+                Log.i(
+                    TAG,
+                    "Preinstalled Chrome preserved: $pkg " +
+                        "(system/updated-system; wasHidden=$wasHidden; uninstallBlocked+unhide+enable)"
+                )
+            } else {
+                Log.i(
+                    TAG,
+                    "Chrome package preserved (already installed): $pkg " +
+                        "(wasHidden=$wasHidden; uninstallBlocked+unhide+enable) — skip Uptodown replace"
+                )
+            }
+        }
+        for (pkg in installed) {
+            if (!keep.isTrichromePackage(pkg)) continue
+            runCatching { dpm.setUninstallBlocked(admin, pkg, true) }
+            runCatching { dpm.setApplicationHidden(admin, pkg, false) }
+            hidden.remove(pkg)
+            Log.i(TAG, "Trichrome kept (Chrome dependency): $pkg")
+        }
+        if (preserved == 0) {
+            Log.i(TAG, "No Chrome-family package installed yet; ChromeInstaller may download if still absent")
+        } else {
+            Log.i(TAG, "Chrome early preserve done: preserved=$preserved (will not replace preinstall)")
+        }
+    }
+
     /** Explicitly unhide a keep-list package and remove it from HiddenStore. */
     private fun unhideKeepPackage(pkg: String, hidden: MutableSet<String>, label: String) {
         if (!isPackageInstalled(pkg)) return
@@ -1255,8 +1327,9 @@ class PolicyApplier(context: Context) {
     }
 
     private fun isPackageInstalled(packageName: String): Boolean {
+        val flags = PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
         return runCatching {
-            appContext.packageManager.getPackageInfo(packageName, 0)
+            appContext.packageManager.getApplicationInfo(packageName, flags)
             true
         }.getOrDefault(false)
     }

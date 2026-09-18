@@ -26,6 +26,8 @@ class KeepPackages(private val context: Context) {
         if (isForceHide(packageName)) return false
         if (packageName == context.packageName) return true
         if (packageName in PRODUCT_ALLOWLIST) return true
+        if (packageName in CHROME_PACKAGES) return true
+        if (isTrichromePackage(packageName)) return true
         if (packageName in CRITICAL_PACKAGES) return true
         if (CRITICAL_PREFIXES.any { matchesPrefix(packageName, it) }) return true
         if (packageName in homeSystemPackages()) return true
@@ -58,8 +60,15 @@ class KeepPackages(private val context: Context) {
         if (packageName == context.packageName) return true
         if (packageName in HARD_DENY_UNINSTALL) return true
         if (packageName in CHROME_PACKAGES) return true
+        if (isTrichromePackage(packageName)) return true
         if (shouldKeep(packageName)) return true
         return false
+    }
+
+    /** Trichrome / Chrome shared library packages — never uninstall; keep when Chrome is kept. */
+    fun isTrichromePackage(packageName: String): Boolean {
+        return TRICHROME_PREFIXES.any { matchesPrefix(packageName, it) } ||
+            packageName in TRICHROME_PACKAGES
     }
 
     fun productAllowlist(): List<String> = PRODUCT_ALLOWLIST.toList()
@@ -173,6 +182,16 @@ class KeepPackages(private val context: Context) {
             CHROME_BETA_PACKAGE,
             CHROME_DEV_PACKAGE,
             CHROME_CANARY_PACKAGE,
+        )
+
+        /** Trichrome library packages Chrome depends on (exact ids). */
+        val TRICHROME_PACKAGES: Set<String> = linkedSetOf(
+            "com.google.android.trichromelibrary",
+        )
+
+        /** Prefixes for versioned trichrome shared libraries. */
+        val TRICHROME_PREFIXES: List<String> = listOf(
+            "com.google.android.trichromelibrary",
         )
 
         val SETTINGS_PACKAGES: List<String> = listOf(
@@ -419,6 +438,8 @@ class KeepPackages(private val context: Context) {
             "com.google.android.ext",
             "com.android.ext.services",
             "com.android.server",
+            "com.google.android.trichromelibrary",
+            "com.google.android.webview",
         )
 
         private fun matchesPrefix(packageName: String, prefix: String): Boolean {
