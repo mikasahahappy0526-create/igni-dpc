@@ -88,12 +88,13 @@ data class DarkModeStatus(
 
 /**
  * Idempotent Device Owner policy:
- * - Uninstall **user** apps that are not on the keep / allowlist (frees storage).
- * - Hide **system** apps that are not kept (cannot safely uninstall).
+ * - Prefer **silent uninstall** for every non-keep package (user + system/updated-system).
+ * - Hide (`setApplicationHidden`) only as **fallback** when uninstall fails / stub remains
+ *   and the package is launchable / visible bloat — so「個人用に戻す」does not bring them back.
  * - Never claim HOME: clear this package's persistent preferred activities every apply
  *   so the stock Samsung / OEM launcher remains home (Igni HomeActivity is disabled).
  * - Keep Chrome / Settings / Play / Camera / LINE / Alive / Igni visible (explicit unhide+enable).
- * - Force-hide (+ uninstall if possible) Google app / search (not Chrome).
+ * - Force-remove Google app / search (prefer uninstall then hide; not Chrome).
  * - Force-remove TikTok Lite (prefer uninstall; hide if system/uninstall fails).
  * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
  * - After policies: async silent install LINE / Chrome / Alive if missing (never Play).
@@ -310,6 +311,7 @@ class PolicyApplier(context: Context) {
 
         var newlyHidden = 0
         var uninstallRequested = 0
+        var hideFallback = 0
         for (pkg in installed) {
             // Force-hide Google / force-remove TikTok handled above; still skip hard-deny / keep.
             if (keep.isForceHide(pkg)) {
@@ -325,6 +327,7 @@ class PolicyApplier(context: Context) {
                 continue
             }
             // Hard deny + shouldKeep: never uninstall or hide these.
+            // CRITICAL / launcher / systemui stay protected via shouldKeep — do not widen.
             if (keep.isHardDenyUninstall(pkg)) continue
             if (keep.shouldKeep(pkg)) continue
             if (pkg == appContext.packageName) continue
@@ -332,25 +335,41 @@ class PolicyApplier(context: Context) {
             if (pkg in KeepPackages.CHROME_PACKAGES) continue
             if (keep.isTrichromePackage(pkg)) continue
 
-            if (isSystemOrUpdatedSystemApp(pkg)) {
-                // System bloat: hide only (never uninstall). Same launchable scope as prior releases.
-                if (pkg !in launchable) continue
+            val system = isSystemOrUpdatedSystemApp(pkg)
+            // Prefer silent uninstall for ALL non-keep (user + system/updated-system).
+            // Updated-system: uninstall often removes the update / may remove the app.
+            val requested = requestSilentUninstall(pkg)
+            if (requested) {
+                uninstallRequested++
+                if (hidden.remove(pkg)) {
+                    Log.i(TAG, "Removed uninstall-target $pkg from HiddenStore")
+                }
+                Log.i(TAG, "Uninstall attempted for $pkg (system=$system)")
+            } else {
+                Log.i(TAG, "Uninstall not submitted for $pkg (system=$system)")
+            }
+
+            // Hide fallback only: uninstall failed to submit, or system stub may remain,
+            // and package is still present + launchable / visible bloat.
+            val stillPresent = isPackageInstalled(pkg)
+            val needHideFallback =
+                stillPresent &&
+                    pkg in launchable &&
+                    (!requested || system)
+            if (needHideFallback) {
                 val ok = runCatching {
                     dpm.setApplicationHidden(admin, pkg, true)
                 }.onFailure {
-                    Log.w(TAG, "Failed to hide system app $pkg", it)
+                    Log.w(TAG, "Failed to hide fallback $pkg", it)
                 }.getOrDefault(false)
                 if (ok) {
                     if (hidden.add(pkg)) newlyHidden++
-                    Log.i(TAG, "Hidden system app $pkg")
-                }
-            } else {
-                // Removable user app: silent uninstall as Device Owner (frees storage).
-                if (requestSilentUninstall(pkg)) {
-                    uninstallRequested++
-                    if (hidden.remove(pkg)) {
-                        Log.i(TAG, "Removed uninstalled package $pkg from HiddenStore")
-                    }
+                    hideFallback++
+                    Log.i(
+                        TAG,
+                        "Hide fallback for $pkg " +
+                            "(system=$system uninstallRequested=$requested)"
+                    )
                 }
             }
         }
@@ -401,7 +420,8 @@ class PolicyApplier(context: Context) {
         Log.i(
             TAG,
             "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden " +
-                "uninstallRequested=$uninstallRequested cameras=${cameras.size} " +
+                "uninstallRequested=$uninstallRequested hideFallback=$hideFallback " +
+                "cameras=${cameras.size} " +
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
@@ -429,8 +449,9 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Restore packages this DPC has **hidden** (typically system apps).
-     * Cannot restore user apps that were uninstalled — those must be reinstalled from Play / APK.
+     * Restore packages this DPC has **hidden** (hide-fallback stubs).
+     * Cannot restore packages that were uninstalled — those stay gone after「個人用に戻す」
+     * and must be reinstalled from Play / APK.
      */
     fun unhideAll(): Int {
         if (!isDeviceOwner()) return 0
@@ -555,7 +576,7 @@ class PolicyApplier(context: Context) {
                 packageName,
                 pending.intentSender
             )
-            Log.i(TAG, "Uninstall requested for user app $packageName")
+            Log.i(TAG, "Uninstall requested for $packageName")
             true
         }.onFailure {
             Log.w(TAG, "Failed to request uninstall for $packageName", it)
@@ -813,7 +834,8 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Force-hide Google app / search packages; uninstall when removable.
+     * Force-remove Google app / search packages (TikTok-style): prefer silent uninstall,
+     * then hide (+ disable) when system/uninstall fails or stub remains.
      * Never touches Chrome / Play / Settings.
      */
     private fun forceHideGoogleApps(hidden: MutableSet<String>): GoogleAppStatus {
@@ -839,40 +861,45 @@ class PolicyApplier(context: Context) {
                 dpm.clearPackagePersistentPreferredActivities(admin, pkg)
             }
 
-            val hideOk = runCatching {
-                dpm.setApplicationHidden(admin, pkg, true)
-            }.onFailure {
-                Log.w(TAG, "Failed to hide Google package $pkg", it)
-            }.getOrDefault(false)
-            if (hideOk) {
-                hiddenN++
-                hidden.add(pkg)
-                notes += "$pkg=hidden"
-                Log.i(TAG, "Force-hidden Google package $pkg")
-            } else {
-                notes += "$pkg=hide_fail"
+            val requested = requestSilentUninstall(pkg)
+            if (requested) {
+                uninstN++
+                hidden.remove(pkg)
+                notes += "$pkg=uninstall_req"
+                Log.i(TAG, "Google uninstall requested: $pkg")
             }
 
-            // Disable as defense in depth (system apps often cannot uninstall).
-            runCatching {
-                appContext.packageManager.setApplicationEnabledSetting(
-                    pkg,
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
-                    0
-                )
-                notes += "$pkg=disabled"
-            }.onFailure {
-                Log.w(TAG, "Failed to disable Google package $pkg", it)
-            }
-
-            if (!isSystemOrUpdatedSystemApp(pkg)) {
-                if (requestSilentUninstall(pkg)) {
-                    uninstN++
-                    hidden.remove(pkg)
-                    notes += "$pkg=uninstall_req"
+            val system = isSystemOrUpdatedSystemApp(pkg)
+            if (system || !requested) {
+                val hideOk = runCatching {
+                    dpm.setApplicationHidden(admin, pkg, true)
+                }.onFailure {
+                    Log.w(TAG, "Failed to hide Google package $pkg", it)
+                }.getOrDefault(false)
+                if (hideOk) {
+                    hiddenN++
+                    hidden.add(pkg)
+                    notes += "$pkg=hidden"
+                    Log.i(
+                        TAG,
+                        "Google hidden (fallback): $pkg " +
+                            "(system=$system uninstallRequested=$requested)"
+                    )
+                } else {
+                    notes += "$pkg=hide_fail"
                 }
-            } else {
-                notes += "$pkg=system_keep_hidden"
+
+                // Disable as defense in depth (system apps often cannot uninstall).
+                runCatching {
+                    appContext.packageManager.setApplicationEnabledSetting(
+                        pkg,
+                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+                        0
+                    )
+                    notes += "$pkg=disabled"
+                }.onFailure {
+                    Log.w(TAG, "Failed to disable Google package $pkg", it)
+                }
             }
         }
 
@@ -881,7 +908,7 @@ class PolicyApplier(context: Context) {
         } else {
             "非表示 $hiddenN / アンインストール要求 $uninstN — ${notes.joinToString("; ")}"
         }
-        Log.i(TAG, "Google force-hide: $detail")
+        Log.i(TAG, "Google force-remove: $detail")
         return GoogleAppStatus(
             hidden = hiddenN,
             uninstallRequested = uninstN,

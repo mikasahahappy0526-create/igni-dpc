@@ -2,8 +2,8 @@
 
 完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**端末標準ホーム（Samsung One UI 等）**のまま、許可リスト外について次を適用します。設定・Play・Chrome・LINE・カメラは表示を維持します。
 
-- **ユーザーアプリ**（非システム）: Device Owner として `PackageInstaller.uninstall` で**サイレントアンインストール**（容量を解放）
-- **システムアプリ**: アンインストールせず `DevicePolicyManager.setApplicationHidden(true)` で**非表示のみ**
+- **許可リスト外**（ユーザー／システム／更新システム共通）: まず Device Owner として `PackageInstaller.uninstall` で**サイレントアンインストールを試行**（容量解放・「個人用に戻す」後も戻らない）
+- **フォールバック**: アンインストール失敗／システムスタブが残る場合のみ、起動可能なものに限り `setApplicationHidden(true)` で非表示
 
 - パッケージ名: `app.igni.dpc`
 - アプリ名: `イグニ`
@@ -54,18 +54,20 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - `PolicyApplier.apply()` のたびに検出したカメラを **明示的に unhide** し、`HiddenStore` からも除去
 - 管理画面（`AdminActivity`）に検出カメラパッケージ一覧を表示
 
-## アンインストール vs 非表示（v1.0.5）
+## アンインストール vs 非表示（v1.0.5 → **v1.0.31 でアンインストール優先**）
 
 `PolicyApplier.apply()` は許可リスト外のパッケージを次のように扱います。
 
 | 種別 | 判定 | 動作 |
 |---|---|---|
-| ユーザーアプリ | `FLAG_SYSTEM` / `FLAG_UPDATED_SYSTEM_APP` なし | **サイレントアンインストール**（`PackageInstaller.uninstall`、結果はログ） |
-| システムアプリ | 上記フラグあり | **非表示のみ**（`setApplicationHidden(true)`）。起動可能なもののみ |
+| 許可リスト外（すべて） | `shouldKeep` / hard-deny / Chrome / カメラ / trichrome / 自己以外 | **まずサイレントアンインストール**（`PackageInstaller.uninstall`）。更新システムも試行（更新削除／アプリ削除になりうる） |
+| フォールバック | アンインストール未提出、またはシステム／更新システムでスタブ残存、かつ起動可能 | **非表示**（`setApplicationHidden(true)`）のみ |
 
-- 許可リスト・DPC 自身・IME・SystemUI 等（`KeepPackages.shouldKeep`）は絶対に消さない／隠さない
-- アンインストールしたパッケージは `HiddenStore` から除去（もう無いため）。システム非表示は追跡を継続
-- 「アプリ一覧を表示に戻す」は **隠したシステムアプリのみ**復元可能。アンインストール済みユーザーアプリは復元不可（Play 等から再インストール）
+- 許可リスト・DPC 自身・IME・SystemUI 等（`KeepPackages.shouldKeep` / CRITICAL）は絶対に消さない／隠さない（対象集合は従来の「隠していた集合」と同じ）
+- Google アプリ強制除去・TikTok Lite も同じ「アンインストール優先 → 非表示フォールバック」
+- アンインストールしたパッケージは `HiddenStore` から除去。非表示フォールバックのみ追跡
+- 「個人用に戻す」は隠したアプリを復元するが、**アンインストール済みは戻らない**（Play 等から再インストールが必要）
+- ログ: `uninstallRequested`（試行数）と `hideFallback`（非表示フォールバック数）
 
 ## 表示ポリシー（v1.0.2+ / 強化 v1.0.3 / ダーク強化 v1.0.6）
 
@@ -98,6 +100,16 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
+
+## v1.0.31（許可リスト外はアンインストール優先）
+
+- **PolicyApplier メインループ**: 許可リスト外はシステム／更新システムも含め **常に `requestSilentUninstall` を先に試行**。失敗またはスタブ残存かつ起動可能なら `setApplicationHidden(true)` をフォールバックのみ
+- **狙い**: 「個人用に戻す」後もブロートアプリが復活しない（非表示だけだと unhide で戻る）
+- **Google 強制除去**: TikTok Lite と同様にアンインストール優先 → 非表示／無効化フォールバック
+- CRITICAL / `shouldKeep` / Chrome / Settings / Play / LINE / Alive / カメラ / trichrome / 自己は従来どおり保護（対象集合は広げない）
+- ログ: `uninstallRequested` vs `hideFallback` を記録
+- 維持: ダークモード 1.0.30、機内モード、アライブ自動インストール、TikTok 削除、Chrome 保護、ja_JP、Admin UI
+- versionCode **32** / versionName **1.0.31**
 
 ## v1.0.30（ダークモード強制強化・car mode poke）
 

@@ -12,7 +12,7 @@ import android.view.inputmethod.InputMethodManager
  * Packages that must remain installed (and visible when launchable) for a usable dedicated terminal.
  *
  * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome + LINE + Alive + Igni.
- * Force-hide: Google app / search / assistant (never treat as Chrome substitute).
+ * Force-remove: Google app / search / assistant (uninstall then hide; never Chrome substitute).
  * Force-remove: TikTok Lite (uninstall preferred; hide if system/uninstall fails).
  * Critical keep-list: System UI, provisioning, keyboards, default launcher, Play services, DPC, etc.
  *
@@ -40,7 +40,7 @@ class KeepPackages(private val context: Context) {
     }
 
     /**
-     * Google app / Assistant / search lite — hide and uninstall-if-possible.
+     * Google app / Assistant / search lite — prefer uninstall then hide (TikTok-style).
      * Never treat these as a Chrome substitute (Sense3 showed Google instead of Chrome).
      */
     fun isForceHide(packageName: String): Boolean {
@@ -304,7 +304,7 @@ class KeepPackages(private val context: Context) {
         const val IGN_PACKAGE = "app.igni.dpc"
 
         /**
-         * Google app / search / assistant — force hide (+ uninstall if removable).
+         * Google app / search / assistant — force-remove (uninstall preferred, then hide).
          * Do **not** treat as Chrome. Never includes Chrome / Play / Settings.
          */
         val FORCE_HIDE_GOOGLE: Set<String> = linkedSetOf(
