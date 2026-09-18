@@ -3,16 +3,21 @@ package app.igni.dpc.policy
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.UiModeManager
+import android.app.ActivityManager
+import android.app.AlarmManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.os.Build
+import android.os.LocaleList
 import android.provider.Settings
 import android.util.Log
+import java.util.Locale
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
 import app.igni.dpc.UninstallStatusReceiver
@@ -91,6 +96,7 @@ data class DarkModeStatus(
  * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
  * - Apply display defaults: Samsung Settings-reflecting dark theme + 30-minute timeout.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
+ * - Force system locale Japanese (ja_JP) + time zone Asia/Tokyo (best-effort; every apply).
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -370,6 +376,9 @@ class PolicyApplier(context: Context) {
         // Audio: silent/manner + all volumes 0 (best-effort; never fail apply).
         val audio = applyAudioPolicy()
 
+        // System language Japanese + Asia/Tokyo (best-effort; re-applied every policy apply).
+        val localeTz = applyJapaneseLocaleAndTimeZone()
+
         store.replace(hidden)
         store.markApplied()
         Log.i(
@@ -379,7 +388,7 @@ class PolicyApplier(context: Context) {
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
-                "chromeBrowser=$chromeBrowser"
+                "chromeBrowser=$chromeBrowser localeTz=$localeTz"
         )
         // Post-setup: LINE/Chrome missing → silent Uptodown only (async). Never open Play.
         // Alive / TikTok Lite are Admin-button only — do NOT auto-install here.
@@ -1320,6 +1329,229 @@ class PolicyApplier(context: Context) {
         }
     }
 
+
+    /**
+     * Force system locale to Japanese (ja_JP) and time zone to Asia/Tokyo.
+     * Best-effort for Device Owner; logged; never fails [apply].
+     * Re-run on every policy reapply so already-enrolled English devices get fixed.
+     *
+     * Order:
+     * 1) Reflective DPM setConfiguredLocales / related (compileSdk may expose SystemApi)
+     * 2) LocaleList + ActivityManager updatePersistentConfiguration / updateConfiguration
+     *    (AOSP LocalePicker pattern)
+     * 3) Reflective LocalePicker.updateLocale
+     * Skip persist.sys.locale (needs root; unreliable without it).
+     * Time zone: [DevicePolicyManager.setTimeZone], then [AlarmManager.setTimeZone].
+     */
+    private fun applyJapaneseLocaleAndTimeZone(): String {
+        val locale = Locale.forLanguageTag(TARGET_LOCALE_TAG)
+        val localeList = LocaleList(locale)
+        val notes = mutableListOf<String>()
+        var localeOk = false
+        var tzOk = false
+
+        // 1) DPM setConfiguredLocales(ComponentName, LocaleList) if present
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setConfiguredLocales",
+                ComponentName::class.java,
+                LocaleList::class.java
+            )
+            method.invoke(dpm, admin, localeList)
+            localeOk = true
+            notes += "dpm.setConfiguredLocales=ok"
+            Log.i(TAG, "DPM.setConfiguredLocales(ja_JP)")
+        }.onFailure {
+            notes += "dpm.setConfiguredLocales=skip"
+            Log.w(TAG, "DPM.setConfiguredLocales unavailable/failed", it)
+        }
+
+        // Some builds expose setSystemLocales / setOverrideLocales without admin arg
+        if (!localeOk) {
+            for (name in listOf("setSystemLocales", "setOverrideLocales")) {
+                val ok = runCatching {
+                    val method = DevicePolicyManager::class.java.getMethod(name, LocaleList::class.java)
+                    method.invoke(dpm, localeList)
+                    true
+                }.onFailure {
+                    Log.w(TAG, "DPM.$name unavailable/failed", it)
+                }.getOrDefault(false)
+                if (ok) {
+                    localeOk = true
+                    notes += "dpm.$name=ok"
+                    Log.i(TAG, "DPM.$name(ja_JP)")
+                    break
+                } else {
+                    notes += "dpm.$name=skip"
+                }
+            }
+        }
+
+        // LocaleManager (API 33+): application locales + hidden system setters if present
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 33) {
+                val lmClass = Class.forName("android.app.LocaleManager")
+                val lm = appContext.getSystemService(lmClass)
+                if (lm != null) {
+                    runCatching {
+                        val m = lmClass.getMethod("setApplicationLocales", LocaleList::class.java)
+                        m.invoke(lm, localeList)
+                        notes += "localeManager.setApplicationLocales=ok"
+                        Log.i(TAG, "LocaleManager.setApplicationLocales(ja_JP)")
+                    }.onFailure {
+                        notes += "localeManager.setApplicationLocales=fail"
+                        Log.w(TAG, "LocaleManager.setApplicationLocales failed", it)
+                    }
+                    for (name in listOf("setSystemLocales", "setSystemLocalesForUser")) {
+                        runCatching {
+                            val methods = lmClass.methods.filter { it.name == name }
+                            for (m in methods) {
+                                when (m.parameterTypes.size) {
+                                    1 -> m.invoke(lm, localeList)
+                                    2 -> m.invoke(lm, localeList, 0)
+                                    else -> continue
+                                }
+                                localeOk = true
+                                notes += "localeManager.$name=ok"
+                                Log.i(TAG, "LocaleManager.$name(ja_JP)")
+                                return@runCatching
+                            }
+                        }.onFailure {
+                            notes += "localeManager.$name=skip"
+                            Log.w(TAG, "LocaleManager.$name failed", it)
+                        }
+                    }
+                }
+            }
+        }.onFailure {
+            notes += "localeManager=skip"
+            Log.w(TAG, "LocaleManager path failed", it)
+        }
+
+        // 2) ActivityManager updatePersistentConfiguration / updateConfiguration (LocalePicker)
+        runCatching {
+            val config = Configuration(appContext.resources.configuration)
+            config.setLocales(localeList)
+            runCatching {
+                val field = Configuration::class.java.getField("userSetLocale")
+                field.setBoolean(config, true)
+            }
+
+            val am = ActivityManager::class.java
+            val getService = runCatching { am.getDeclaredMethod("getService") }.getOrNull()
+            val iAm = getService?.let { m ->
+                m.isAccessible = true
+                m.invoke(null)
+            }
+            if (iAm != null) {
+                val iAmClass = iAm.javaClass
+                val updated = runCatching {
+                    val m = iAmClass.methods.firstOrNull {
+                        it.name == "updatePersistentConfiguration" && it.parameterTypes.size == 1
+                    } ?: throw NoSuchMethodException("updatePersistentConfiguration")
+                    m.invoke(iAm, config)
+                    true
+                }.onFailure {
+                    Log.w(TAG, "IActivityManager.updatePersistentConfiguration failed", it)
+                }.getOrDefault(false)
+                if (updated) {
+                    localeOk = true
+                    notes += "am.updatePersistentConfiguration=ok"
+                    Log.i(TAG, "IActivityManager.updatePersistentConfiguration(ja_JP)")
+                } else {
+                    val updated2 = runCatching {
+                        val m = iAmClass.methods.firstOrNull {
+                            it.name == "updateConfiguration" && it.parameterTypes.size == 1
+                        } ?: throw NoSuchMethodException("updateConfiguration")
+                        m.invoke(iAm, config)
+                        true
+                    }.onFailure {
+                        Log.w(TAG, "IActivityManager.updateConfiguration failed", it)
+                    }.getOrDefault(false)
+                    if (updated2) {
+                        localeOk = true
+                        notes += "am.updateConfiguration=ok"
+                        Log.i(TAG, "IActivityManager.updateConfiguration(ja_JP)")
+                    } else {
+                        notes += "am.updateConfiguration=fail"
+                    }
+                }
+            } else {
+                notes += "am.getService=null"
+                Log.w(TAG, "ActivityManager.getService() unavailable")
+            }
+        }.onFailure {
+            notes += "am.config=fail"
+            Log.w(TAG, "ActivityManager locale update failed", it)
+        }
+
+        // 3) com.android.internal.app.LocalePicker.updateLocale(Locale)
+        runCatching {
+            val picker = Class.forName("com.android.internal.app.LocalePicker")
+            val m = picker.getMethod("updateLocale", Locale::class.java)
+            m.invoke(null, locale)
+            localeOk = true
+            notes += "LocalePicker.updateLocale=ok"
+            Log.i(TAG, "LocalePicker.updateLocale(ja_JP)")
+        }.onFailure {
+            notes += "LocalePicker.updateLocale=skip"
+            Log.w(TAG, "LocalePicker.updateLocale unavailable/failed", it)
+        }
+
+        // Do NOT write persist.sys.locale (needs root; unreliable for DO).
+
+        // Time zone Asia/Tokyo
+        runCatching {
+            val ok = dpm.setTimeZone(admin, TARGET_TIME_ZONE)
+            if (ok) {
+                tzOk = true
+                notes += "dpm.setTimeZone=ok"
+                Log.i(TAG, "DPM.setTimeZone($TARGET_TIME_ZONE)")
+            } else {
+                notes += "dpm.setTimeZone=false"
+                Log.w(TAG, "DPM.setTimeZone returned false")
+            }
+        }.onFailure {
+            notes += "dpm.setTimeZone=fail"
+            Log.w(TAG, "DPM.setTimeZone failed", it)
+        }
+
+        if (!tzOk) {
+            runCatching {
+                val alarm = appContext.getSystemService(AlarmManager::class.java)
+                alarm?.setTimeZone(TARGET_TIME_ZONE)
+                tzOk = true
+                notes += "alarm.setTimeZone=ok"
+                Log.i(TAG, "AlarmManager.setTimeZone($TARGET_TIME_ZONE)")
+            }.onFailure {
+                notes += "alarm.setTimeZone=fail"
+                Log.w(TAG, "AlarmManager.setTimeZone failed", it)
+            }
+        }
+
+        // Optional: disable auto time zone so Tokyo sticks
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                dpm.setAutoTimeZoneEnabled(admin, false)
+                notes += "dpm.setAutoTimeZoneEnabled=false"
+            }
+        }.onFailure {
+            notes += "dpm.setAutoTimeZoneEnabled=skip"
+            Log.w(TAG, "setAutoTimeZoneEnabled failed", it)
+        }
+
+        val currentLocales = runCatching {
+            LocaleList.getDefault().toLanguageTags()
+        }.getOrDefault("?")
+        val currentTz = java.util.TimeZone.getDefault().id
+        val summary =
+            "locale=${if (localeOk) "ok" else "fail"} tz=${if (tzOk) "ok" else "fail"} " +
+                "readLocales=$currentLocales readTz=$currentTz detail=${notes.joinToString("; ")}"
+        Log.i(TAG, "Locale/TZ apply: $summary")
+        return summary
+    }
+
+
     private fun isPackageInstalled(packageName: String): Boolean {
         val flags = PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL
         return runCatching {
@@ -1337,6 +1569,10 @@ class PolicyApplier(context: Context) {
         private const val SYSTEM_DISPLAY_NIGHT_THEME = "display_night_theme"
         /** 30 minutes in milliseconds. */
         const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
+        /** System language for Japan provisioning / policy reapply. */
+        const val TARGET_LOCALE_TAG = "ja-JP"
+        /** IANA time zone for Japan. */
+        const val TARGET_TIME_ZONE = "Asia/Tokyo"
         private const val MATCH_FLAGS =
             PackageManager.MATCH_DISABLED_COMPONENTS or
                 PackageManager.MATCH_UNINSTALLED_PACKAGES or

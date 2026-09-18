@@ -99,6 +99,18 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.26（システム言語を日本語に）
+
+セットアップ中／適用後も端末が英語のまま残る問題への対策。
+
+- **QR**: `PROVISIONING_LOCALE=ja_JP` + `PROVISIONING_TIME_ZONE=Asia/Tokyo` を easy / povo に追加（既存の `LEAVE_ALL_SYSTEM_APPS_ENABLED=true` は維持）
+- **PolicyApplier**: DO 確認後にシステムロケール `ja_JP` とタイムゾーン `Asia/Tokyo` をベストエフォートで設定（再適用でも実行 → 既登録の英語端末も工場出荷リセットなしで修正）
+  - DPM `setConfiguredLocales`（あれば）→ ActivityManager `updatePersistentConfiguration` / LocalePicker → `DPM.setTimeZone` / `AlarmManager.setTimeZone`
+  - `persist.sys.locale` は root 無しでは不可のためスキップ
+- Manifest: `CHANGE_CONFIGURATION` / `SET_TIME_ZONE`
+- versionCode **27** / versionName **1.0.26**
+- Chrome preserve・ホームピン無し・Admin UI（1.0.23–25）は維持。Play は開かない。
+
 ## v1.0.25（ホーム画面へのピン留め撤廃）
 
 - **削除**: `HomeLayoutHelper` と `requestPinShortcut` によるホーム画面へのショートカット追加を完全撤去
@@ -357,11 +369,13 @@ keytool -exportcert -alias igni -keystore keystore/igni-release.jks \
   "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://example.com/igni-dpc.apk",
   "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "yOZEhRr9nIbif0_vEKh4PE1exHHPPUQeDOuyGnkuOwA",
   "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
+  "android.app.extra.PROVISIONING_LOCALE": "ja_JP",
+  "android.app.extra.PROVISIONING_TIME_ZONE": "Asia/Tokyo",
   "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": false
 }
 ```
 
-`PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED` を `true` にすると、プロビジョニング中にシステムアプリが無効化されず、この DPC が後から非表示制御します。
+`PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED` を `true` にすると、プロビジョニング中にシステムアプリが無効化されず、この DPC が後から非表示制御します。`PROVISIONING_LOCALE` は公式形式 `xx_yy`（例: `ja_JP`）。`PROVISIONING_TIME_ZONE` は IANA（例: `Asia/Tokyo`）。
 
 ダウンロード URL は、端末が取得できる HTTPS 上の APK に置き換えてください。
 
