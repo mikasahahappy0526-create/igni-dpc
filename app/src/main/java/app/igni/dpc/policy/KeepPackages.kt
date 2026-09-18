@@ -13,6 +13,7 @@ import android.view.inputmethod.InputMethodManager
  *
  * Product allowlist (shown in the launcher): Settings + Play Store + Camera + Chrome + LINE + Alive + Igni.
  * Force-hide: Google app / search / assistant (never treat as Chrome substitute).
+ * Force-remove: TikTok Lite (uninstall preferred; hide if system/uninstall fails).
  * Critical keep-list: System UI, provisioning, keyboards, default launcher, Play services, DPC, etc.
  *
  * Camera packages are detected dynamically (image-capture intent handlers, launcher apps
@@ -24,6 +25,8 @@ class KeepPackages(private val context: Context) {
     fun shouldKeep(packageName: String): Boolean {
         // Google app / search must never stay via HOME-handler keep.
         if (isForceHide(packageName)) return false
+        // TikTok Lite must never stay via allowlist / HOME keep.
+        if (isForceRemoveTikTokLite(packageName)) return false
         if (packageName == context.packageName) return true
         if (packageName in PRODUCT_ALLOWLIST) return true
         if (packageName in CHROME_PACKAGES) return true
@@ -51,12 +54,22 @@ class KeepPackages(private val context: Context) {
     }
 
     /**
+     * TikTok Lite (preinstall or user) — prefer silent uninstall; hide if system/uninstall fails.
+     * Never treat as keep / allowlist / hard-deny.
+     */
+    fun isForceRemoveTikTokLite(packageName: String): Boolean {
+        return packageName in FORCE_REMOVE_TIKTOK_LITE
+    }
+
+    /**
      * Hard deny for PackageInstaller.uninstall — defense in depth beyond [shouldKeep]
      * (races / allowlist gaps must never remove Chrome, Play, Settings, LINE, or this DPC).
      */
     fun isHardDenyUninstall(packageName: String): Boolean {
         // Allow uninstall of force-hide Google search/app packages.
         if (isForceHide(packageName)) return false
+        // Allow uninstall of TikTok Lite force-remove targets.
+        if (isForceRemoveTikTokLite(packageName)) return false
         if (packageName == context.packageName) return true
         if (packageName in HARD_DENY_UNINSTALL) return true
         if (packageName in CHROME_PACKAGES) return true
@@ -171,8 +184,10 @@ class KeepPackages(private val context: Context) {
         const val CHROME_DEV_PACKAGE = "com.chrome.dev"
         const val CHROME_CANARY_PACKAGE = "com.chrome.canary"
         const val LINE_PACKAGE = "jp.naver.line.android"
-        /** TikTok Lite — Admin-button install; stay visible after policy apply. */
+        /** TikTok Lite (primary package id on many devices). Force-remove on policy apply. */
         const val TIKTOK_LITE_PACKAGE = "com.zhiliaoapp.musically.go"
+        /** Alternate TikTok Lite package id seen on some OEM / region builds. */
+        const val TIKTOK_LITE_ALT_PACKAGE = "com.tiktok.lite.go"
         /** アライブ (puchicli) — Admin-button install; stay visible after policy apply. */
         const val ALIVE_PACKAGE = "jp.puchicli.app"
 
@@ -283,7 +298,6 @@ class KeepPackages(private val context: Context) {
             PLAY_STORE_PACKAGE,
             "com.android.settings",
             LINE_PACKAGE,
-            TIKTOK_LITE_PACKAGE,
             ALIVE_PACKAGE,
         )
 
@@ -305,6 +319,15 @@ class KeepPackages(private val context: Context) {
         /** Prefix matches for Google search shells (narrow — not all com.google.android.apps.*). */
         val FORCE_HIDE_PREFIXES: List<String> = listOf(
             "com.google.android.googlequicksearchbox",
+        )
+
+        /**
+         * TikTok Lite packages — force-remove on every [PolicyApplier.apply].
+         * Prefer PackageInstaller silent uninstall; hide when system/updated-system and uninstall fails.
+         */
+        val FORCE_REMOVE_TIKTOK_LITE: Set<String> = linkedSetOf(
+            TIKTOK_LITE_PACKAGE,
+            TIKTOK_LITE_ALT_PACKAGE,
         )
 
         /** User-facing apps that must stay launchable from the stock OEM home. */
@@ -342,8 +365,6 @@ class KeepPackages(private val context: Context) {
             CHROME_CANARY_PACKAGE,
             // LINE
             LINE_PACKAGE,
-            // TikTok Lite — button install; allowlist so it stays visible
-            TIKTOK_LITE_PACKAGE,
             // アライブ (puchicli) — button install; allowlist so it stays visible
             ALIVE_PACKAGE,
             // Igni DPC itself (AdminActivity LAUNCHER icon on page 1 when OEM places it)

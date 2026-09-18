@@ -4,15 +4,21 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.os.UserHandle
 import android.provider.Settings
+import android.telephony.TelephonyManager
 import android.util.Log
 import app.igni.dpc.AdminReceiver
 
 /**
  * Device Owner airplane-mode read/toggle.
- * Prefers [DevicePolicyManager.setGlobalSetting]; falls back to [Settings.Global.putInt].
- * Always broadcasts [Intent.ACTION_AIRPLANE_MODE_CHANGED] after a successful write.
+ *
+ * Modern/OEM Android often ignores a bare [Settings.Global.AIRPLANE_MODE_ON] write +
+ * [Intent.ACTION_AIRPLANE_MODE_CHANGED] broadcast — the Global flag (and toast) can look
+ * successful while radios stay up. Prefer the hidden [ConnectivityManager.setAirplaneMode]
+ * SystemApi (DO can usually invoke it), then Global writes, then optional radio-power
+ * reflection. Success requires read-back: [isAirplaneModeOn] == requested.
  */
 object AirplaneModeHelper {
 
@@ -42,29 +48,91 @@ object AirplaneModeHelper {
             )
         }
 
-        val value = if (enable) "1" else "0"
-        val wrote = dpmSetGlobalSetting(dpm, admin, Settings.Global.AIRPLANE_MODE_ON, value) ||
-            putGlobalAirplane(app, enable)
+        val notes = mutableListOf<String>()
 
-        if (!wrote) {
-            Log.w(TAG, "Failed to write AIRPLANE_MODE_ON=$value")
-            return ToggleResult(
-                success = false,
-                enabled = isAirplaneModeOn(app),
-                messageJa = "機内モードの切替に失敗しました"
-            )
+        // 1) Primary: ConnectivityManager.setAirplaneMode(boolean) (@SystemApi / hidden).
+        //    This is what system Settings uses and actually drives radios on most builds.
+        val cmOk = connectivitySetAirplaneMode(app, enable)
+        notes += if (cmOk) "cm.setAirplaneMode=ok" else "cm.setAirplaneMode=fail"
+        if (matchesRequested(app, enable)) {
+            broadcastAirplaneChanged(app, enable)
+            Log.i(TAG, "Airplane mode ok via ConnectivityManager enable=$enable detail=$notes")
+            return successResult(enable, notes)
         }
 
+        // 2) Write helpers: DPM.setGlobalSetting + Settings.Global.putInt
+        val value = if (enable) "1" else "0"
+        val dpmOk = dpmSetGlobalSetting(dpm, admin, Settings.Global.AIRPLANE_MODE_ON, value)
+        notes += if (dpmOk) "dpm.setGlobalSetting=ok" else "dpm.setGlobalSetting=fail"
+        val putOk = putGlobalAirplane(app, enable)
+        notes += if (putOk) "global.putInt=ok" else "global.putInt=fail"
+
+        // Retry CM after Global write (some OEMs need flag set first).
+        if (connectivitySetAirplaneMode(app, enable)) {
+            notes += "cm.setAirplaneMode=retry_ok"
+        }
+
+        // 3) Broadcast — useful on some OEMs; never sole success criterion.
+        broadcastAirplaneChanged(app, enable)
+        notes += "broadcast=sent"
+
+        if (matchesRequested(app, enable)) {
+            Log.i(TAG, "Airplane mode ok after Global/CM enable=$enable detail=$notes")
+            return successResult(enable, notes)
+        }
+
+        // 4) Last resort: TelephonyManager / ITelephony setRadioPower (dual-SIM cautious).
+        val radioOk = telephonySetRadioPower(app, enable = !enable)
+        notes += if (radioOk) "telephony.setRadioPower=ok" else "telephony.setRadioPower=fail"
+        // Re-assert Global + CM after radio tweak.
+        putGlobalAirplane(app, enable)
+        connectivitySetAirplaneMode(app, enable)
         broadcastAirplaneChanged(app, enable)
 
+        if (matchesRequested(app, enable)) {
+            Log.i(TAG, "Airplane mode ok after telephony fallback enable=$enable detail=$notes")
+            return successResult(enable, notes)
+        }
+
         val nowOn = isAirplaneModeOn(app)
-        // Prefer read-back; if OEM lags, trust the requested state after successful write.
-        val effective = if (nowOn == enable) nowOn else enable
+        Log.w(TAG, "Airplane mode FAILED enable=$enable readBack=$nowOn detail=$notes")
+        return ToggleResult(
+            success = false,
+            enabled = nowOn,
+            messageJa = "機内モードの切替に失敗しました（端末が拒否した可能性があります）"
+        )
+    }
+
+    private fun matchesRequested(context: Context, enable: Boolean): Boolean =
+        isAirplaneModeOn(context) == enable
+
+    private fun successResult(enable: Boolean, notes: List<String>): ToggleResult {
+        Log.i(TAG, "Airplane success enable=$enable notes=${notes.joinToString(";")}")
         return ToggleResult(
             success = true,
-            enabled = effective,
-            messageJa = if (effective) "機内モードをオンにしました" else "機内モードをオフにしました"
+            enabled = enable,
+            messageJa = if (enable) "機内モードをオンにしました" else "機内モードをオフにしました"
         )
+    }
+
+    /**
+     * Reflective ConnectivityManager.setAirplaneMode(boolean) — hidden @SystemApi.
+     * Returns true if the method was invoked without throwing (not a read-back guarantee).
+     */
+    private fun connectivitySetAirplaneMode(context: Context, enable: Boolean): Boolean {
+        return runCatching {
+            val cm = context.getSystemService(ConnectivityManager::class.java)
+                ?: return@runCatching false
+            val method = ConnectivityManager::class.java.getMethod(
+                "setAirplaneMode",
+                Boolean::class.javaPrimitiveType
+            )
+            method.invoke(cm, enable)
+            Log.i(TAG, "ConnectivityManager.setAirplaneMode($enable)")
+            true
+        }.onFailure {
+            Log.w(TAG, "ConnectivityManager.setAirplaneMode($enable) unavailable/failed", it)
+        }.getOrDefault(false)
     }
 
     private fun dpmSetGlobalSetting(
@@ -102,12 +170,53 @@ object AirplaneModeHelper {
         }.getOrDefault(false)
     }
 
+    /**
+     * Best-effort radio power via TelephonyManager / ITelephony.
+     * [enable]=true means radios ON (airplane OFF); false means radios OFF (airplane ON).
+     * Dual-SIM: only touches default telephony; failures are logged, not fatal.
+     */
+    private fun telephonySetRadioPower(context: Context, enable: Boolean): Boolean {
+        var any = false
+        runCatching {
+            val tm = context.getSystemService(TelephonyManager::class.java) ?: return false
+            // TelephonyManager.setRadioPower(boolean) on some APIs / @SystemApi
+            runCatching {
+                val m = TelephonyManager::class.java.getMethod(
+                    "setRadioPower",
+                    Boolean::class.javaPrimitiveType
+                )
+                m.invoke(tm, enable)
+                Log.i(TAG, "TelephonyManager.setRadioPower($enable)")
+                any = true
+            }.onFailure {
+                Log.w(TAG, "TelephonyManager.setRadioPower unavailable/failed", it)
+            }
+            // ITelephony.setRadioPower via getITelephony
+            runCatching {
+                val getITelephony = TelephonyManager::class.java.getDeclaredMethod("getITelephony")
+                getITelephony.isAccessible = true
+                val iTelephony = getITelephony.invoke(tm) ?: return@runCatching
+                val setRadio = iTelephony.javaClass.getMethod(
+                    "setRadioPower",
+                    Boolean::class.javaPrimitiveType
+                )
+                setRadio.invoke(iTelephony, enable)
+                Log.i(TAG, "ITelephony.setRadioPower($enable)")
+                any = true
+            }.onFailure {
+                Log.w(TAG, "ITelephony.setRadioPower unavailable/failed", it)
+            }
+        }.onFailure {
+            Log.w(TAG, "telephonySetRadioPower failed", it)
+        }
+        return any
+    }
+
     private fun broadcastAirplaneChanged(context: Context, enable: Boolean) {
         val intent = Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).apply {
             putExtra("state", enable)
         }
         runCatching {
-            // Prefer all-users broadcast when available (DO / system-ish).
             val method = Context::class.java.getMethod(
                 "sendBroadcastAsUser",
                 Intent::class.java,

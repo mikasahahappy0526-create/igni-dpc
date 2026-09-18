@@ -99,6 +99,13 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.28（TikTok Lite 強制削除・機内モード実効化）
+
+- **TikTok Lite**: `com.zhiliaoapp.musically.go` / `com.tiktok.lite.go` を PRODUCT_ALLOWLIST / HARD_DENY_UNINSTALL から除外。`PolicyApplier.apply()` でサイレントアンインストールを優先し、システム／更新システムで失敗時は `setApplicationHidden(true)`。keep/unhide ループ対象外。未使用の TikTok Lite インストーラ／レシーバを削除
+- **機内モード**: `AirplaneModeHelper` を強化。第一候補は反射 `ConnectivityManager.setAirplaneMode(boolean)`（@SystemApi）。続けて DPM.setGlobalSetting / Settings.Global.putInt、ブロードキャスト。最終手段として Telephony/ITelephony `setRadioPower`。成功条件は読戻し `AIRPLANE_MODE_ON` が要求値と一致すること（書込＋broadcast だけでは成功にしない）
+- 維持: Chrome 保護、日本語ロケール / Asia/Tokyo、LEAVE_ALL、ホームピン無し、Play 自動オープン無し、LINE / アライブ UI
+- versionCode **29** / versionName **1.0.28**
+
 ## v1.0.27（機内モード切替・Admin UI整理）
 
 - **Admin UI**: Chrome / TikTokライトのインストール行（ボタン＋Play）を削除。プリインストール Chrome の許可リスト保護は維持。TikTokライトも許可リストは残す

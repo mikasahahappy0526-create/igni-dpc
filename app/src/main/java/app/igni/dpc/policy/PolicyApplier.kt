@@ -92,6 +92,7 @@ data class DarkModeStatus(
  *   so the stock Samsung / OEM launcher remains home (Igni HomeActivity is disabled).
  * - Keep Chrome / Settings / Play / Camera / LINE / Alive / Igni visible (explicit unhide+enable).
  * - Force-hide (+ uninstall if possible) Google app / search (not Chrome).
+ * - Force-remove TikTok Lite (prefer uninstall; hide if system/uninstall fails).
  * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
  * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
  * - Apply display defaults: Samsung Settings-reflecting dark theme + 30-minute timeout.
@@ -258,7 +259,7 @@ class PolicyApplier(context: Context) {
             // Do not force-enable trichrome libs (no launcher); just keep unhidden/blocked.
         }
         unhideKeepPackage(KeepPackages.LINE_PACKAGE, hidden, "LINE")
-        unhideKeepPackage(KeepPackages.TIKTOK_LITE_PACKAGE, hidden, "TikTok Lite")
+        // TikTok Lite is force-removed below — do NOT unhide/keep it.
         unhideKeepPackage(KeepPackages.ALIVE_PACKAGE, hidden, "Alive")
         for (settingsPkg in KeepPackages.SETTINGS_PACKAGES) {
             unhideKeepPackage(settingsPkg, hidden, "Settings")
@@ -278,12 +279,16 @@ class PolicyApplier(context: Context) {
         // Force-hide Google app / search (not Chrome) before general hide loop.
         val googleStatus = forceHideGoogleApps(hidden)
 
+        // Force-remove TikTok Lite (prefer silent uninstall; hide if system/uninstall fails).
+        val tiktokRemoved = forceRemoveTikTokLite(hidden)
+
         val installed = installedPackageNames()
         val launchable = launchablePackageNames()
 
         // Safety: never leave keep-list packages hidden; also enable them.
         for (pkg in installed) {
             if (keep.isForceHide(pkg)) continue
+            if (keep.isForceRemoveTikTokLite(pkg)) continue
             if (keep.shouldKeep(pkg)) {
                 if (dpm.isApplicationHidden(admin, pkg)) {
                     val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
@@ -299,9 +304,15 @@ class PolicyApplier(context: Context) {
         var newlyHidden = 0
         var uninstallRequested = 0
         for (pkg in installed) {
-            // Force-hide Google handled above; still skip hard-deny / keep.
+            // Force-hide Google / force-remove TikTok handled above; still skip hard-deny / keep.
             if (keep.isForceHide(pkg)) {
                 // Ensure still hidden if forceHideGoogleApps raced.
+                runCatching { dpm.setApplicationHidden(admin, pkg, true) }
+                if (hidden.add(pkg)) newlyHidden++
+                continue
+            }
+            if (keep.isForceRemoveTikTokLite(pkg)) {
+                // Prefer uninstall already requested; ensure hidden if still present (system stub).
                 runCatching { dpm.setApplicationHidden(admin, pkg, true) }
                 if (hidden.add(pkg)) newlyHidden++
                 continue
@@ -352,7 +363,6 @@ class PolicyApplier(context: Context) {
                 "com.android.vending",
                 "com.android.chrome",
                 KeepPackages.LINE_PACKAGE,
-                KeepPackages.TIKTOK_LITE_PACKAGE,
                 KeepPackages.ALIVE_PACKAGE,
                 appContext.packageName
             )
@@ -388,10 +398,12 @@ class PolicyApplier(context: Context) {
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
+                "tiktokUninst=$tiktokRemoved " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz"
         )
         // Post-setup: LINE/Chrome missing → silent Uptodown only (async). Never open Play.
-        // Alive / TikTok Lite are Admin-button only — do NOT auto-install here.
+        // Alive is Admin-button only — do NOT auto-install here.
+        // TikTok Lite is force-removed (never install).
         LineInstaller.ensureLineInstalledAsync(appContext)
         ChromeInstaller.ensureChromeInstalledAsync(appContext)
         return ApplyResult(
@@ -1158,6 +1170,58 @@ class PolicyApplier(context: Context) {
      * Prefer Chrome for http/https VIEW via DPM persistent preferred activity.
      * Clears Google app preferred handlers first. Best-effort.
      */
+
+    /**
+     * Force-remove TikTok Lite packages. Prefer silent PackageInstaller uninstall;
+     * if system/updated-system and uninstall request fails → [DevicePolicyManager.setApplicationHidden].
+     * Never unhides / keeps these packages.
+     *
+     * @return number of uninstall requests submitted
+     */
+    private fun forceRemoveTikTokLite(hidden: MutableSet<String>): Int {
+        var uninstallRequested = 0
+        val candidates = linkedSetOf<String>()
+        candidates.addAll(KeepPackages.FORCE_REMOVE_TIKTOK_LITE)
+        for (pkg in installedPackageNames()) {
+            if (keep.isForceRemoveTikTokLite(pkg)) candidates.add(pkg)
+        }
+
+        for (pkg in candidates) {
+            if (!isPackageInstalled(pkg)) continue
+            if (!keep.isForceRemoveTikTokLite(pkg)) continue
+
+            runCatching { dpm.clearPackagePersistentPreferredActivities(admin, pkg) }
+
+            val requested = requestSilentUninstall(pkg)
+            if (requested) {
+                uninstallRequested++
+                hidden.remove(pkg)
+                Log.i(TAG, "TikTok Lite uninstall requested: $pkg")
+            }
+
+            val system = isSystemOrUpdatedSystemApp(pkg)
+            if (system || !requested) {
+                val hideOk = runCatching {
+                    dpm.setApplicationHidden(admin, pkg, true)
+                }.onFailure {
+                    Log.w(TAG, "Failed to hide TikTok Lite package $pkg", it)
+                }.getOrDefault(false)
+                if (hideOk) {
+                    hidden.add(pkg)
+                    Log.i(
+                        TAG,
+                        "TikTok Lite hidden (fallback): $pkg " +
+                            "(system=$system uninstallRequested=$requested)"
+                    )
+                } else {
+                    Log.w(TAG, "TikTok Lite hide failed: $pkg (system=$system)")
+                }
+            }
+        }
+        Log.i(TAG, "TikTok Lite force-remove: uninstallRequested=$uninstallRequested")
+        return uninstallRequested
+    }
+
     private fun preferChromeAsDefaultBrowser(): String {
         if (!ChromeInstaller.isChromeInstalled(appContext)) {
             Log.i(TAG, "Chrome not installed; skip default-browser prefer")
