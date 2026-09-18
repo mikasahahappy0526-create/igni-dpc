@@ -99,6 +99,14 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.25（ホーム画面へのピン留め撤廃）
+
+- **削除**: `HomeLayoutHelper` と `requestPinShortcut` によるホーム画面へのショートカット追加を完全撤去
+- **PolicyApplier**: `applyBestEffortHomeLayout` 呼び出しなし。標準ホーム（Samsung One UI 等）のまま
+- **Admin**: `homeLayoutStatus` は非表示のまま更新停止
+- 維持: 標準ホーム、AdminActivity LAUNCHER（ドロワー可）、Chrome プリインストール保護（v1.0.24）、管理 UI（v1.0.23）、Play 自動オープンなし 等
+- versionCode **26** / versionName **1.0.25**
+
 ## v1.0.24（プリインストール Chrome 保護）
 
 - **QR**: `PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED=true` を easy/povo ペイロードに追加（プロビジョニング中のシステムアプリ無効化を防止）

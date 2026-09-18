@@ -9,7 +9,6 @@ import app.igni.dpc.databinding.ActivityAdminBinding
 import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.GoogleAppStatus
-import app.igni.dpc.policy.HomeLayoutHelper
 import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
@@ -144,7 +143,6 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
         updateGoogleLabel(applier.googleAppStatus())
-        binding.homeLayoutStatus.text = applier.homeLayoutStatusText()
         val chromeOk = ChromeInstaller.isChromeInstalled(this)
         binding.chromeBrowserStatus.text = getString(
             R.string.chrome_browser_status_value,
@@ -234,9 +232,6 @@ class AdminActivity : AppCompatActivity() {
                 updateCameraLabel(result.cameraPackages)
                 result.darkMode?.let { updateDarkModeLabel(it) }
                 result.googleApp?.let { updateGoogleLabel(it) }
-                result.homeLayout?.let {
-                    binding.homeLayoutStatus.text = HomeLayoutHelper.lastStatusText(this)
-                }
                 result.chromeDefaultBrowser?.let { browser ->
                     binding.chromeBrowserStatus.text = getString(
                         R.string.chrome_browser_status_value,

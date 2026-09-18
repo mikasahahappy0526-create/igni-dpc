@@ -30,7 +30,6 @@ data class ApplyResult(
     val darkMode: DarkModeStatus? = null,
     val audio: AudioStatus? = null,
     val googleApp: GoogleAppStatus? = null,
-    val homeLayout: HomeLayoutHelper.Status? = null,
     val chromeDefaultBrowser: String? = null
 )
 
@@ -184,7 +183,6 @@ class PolicyApplier(context: Context) {
         )
     }
 
-    fun homeLayoutStatusText(): String = HomeLayoutHelper.lastStatusText(appContext)
 
     fun apply(): ApplyResult {
         if (!isDeviceOwner()) {
@@ -365,9 +363,6 @@ class PolicyApplier(context: Context) {
         // Prefer Chrome as http/https VIEW handler (not Google app).
         val chromeBrowser = preferChromeAsDefaultBrowser()
 
-        // Best-effort pin Shortcuts onto stock home (often needs user confirm — honest status).
-        val homeLayout = HomeLayoutHelper.applyBestEffortHomeLayout(appContext, cameras)
-
         // Display policies: dark mode + 30 min screen timeout (best-effort; never fail apply).
         val dark = applyDarkMode()
         val timeoutMs = applyScreenTimeout()
@@ -384,7 +379,7 @@ class PolicyApplier(context: Context) {
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
-                "chromeBrowser=$chromeBrowser home=${homeLayout.result}"
+                "chromeBrowser=$chromeBrowser"
         )
         // Post-setup: LINE/Chrome missing → silent Uptodown only (async). Never open Play.
         // Alive / TikTok Lite are Admin-button only — do NOT auto-install here.
@@ -400,7 +395,6 @@ class PolicyApplier(context: Context) {
             darkMode = dark,
             audio = audio,
             googleApp = googleStatus,
-            homeLayout = homeLayout,
             chromeDefaultBrowser = chromeBrowser
         )
     }
