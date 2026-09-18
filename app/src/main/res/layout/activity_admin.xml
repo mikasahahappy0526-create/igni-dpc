@@ -66,9 +66,9 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnReapply"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="48dp"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="14dp"
             android:text="@string/btn_reapply"
             android:textSize="16sp"
             app:backgroundTint="@color/igni_orange"
@@ -78,9 +78,9 @@
             android:id="@+id/btnUnhide"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="48dp"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:text="@string/btn_unhide"
             android:textColor="@color/igni_text"
             android:textSize="16sp"
@@ -90,9 +90,9 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnReturnPersonal"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="48dp"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:text="@string/btn_return_personal"
             android:textColor="@color/igni_text"
             android:textSize="16sp"
@@ -104,8 +104,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="4dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text=""
             android:textColor="@color/igni_muted"
             android:textSize="13sp"
@@ -116,18 +117,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="12dp"
             android:textColor="@color/igni_text"
             android:textSize="14sp"
-            tools:text="現在のバージョン: 1.0.21 (22)" />
+            tools:text="現在のバージョン: 1.0.23 (24)" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnUpdate"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="48dp"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:text="@string/btn_update"
             android:textColor="@color/igni_text"
             android:textSize="16sp"
@@ -139,43 +140,54 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="4dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="@string/update_status_idle"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInstallLine"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+        <!-- LINE: [ LINE ] [ Play ] -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="16dp"
-            android:text="@string/btn_install_line"
-            android:textColor="@color/igni_text"
-            android:textSize="16sp"
-            app:cornerRadius="14dp"
-            app:strokeColor="@color/igni_outline" />
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInstallLinePlay"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="4dp"
-            android:text="@string/btn_install_line_play"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallLine"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_install_line"
+                android:textColor="@color/igni_text"
+                android:textSize="16sp"
+                app:cornerRadius="14dp"
+                app:strokeColor="@color/igni_outline" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallLinePlay"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="88dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:minWidth="0dp"
+                android:text="@string/btn_install_line_play"
+                android:textColor="@color/igni_muted"
+                android:textSize="14sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/lineInstallStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="4dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="@string/line_status_idle"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
@@ -193,37 +205,47 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInstallChrome"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+        <!-- Chrome: [ Chrome ] [ Play ] -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="16dp"
-            android:text="@string/btn_install_chrome"
-            android:textColor="@color/igni_text"
-            android:textSize="16sp"
-            app:cornerRadius="14dp"
-            app:strokeColor="@color/igni_outline" />
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInstallChromePlay"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="4dp"
-            android:text="@string/btn_install_chrome_play"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallChrome"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_install_chrome"
+                android:textColor="@color/igni_text"
+                android:textSize="16sp"
+                app:cornerRadius="14dp"
+                app:strokeColor="@color/igni_outline" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallChromePlay"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="88dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:minWidth="0dp"
+                android:text="@string/btn_install_chrome_play"
+                android:textColor="@color/igni_muted"
+                android:textSize="14sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/chromeInstallStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="4dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="@string/chrome_status_idle"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
@@ -241,37 +263,47 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInstallTikTokLite"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+        <!-- TikTokライト: [ TikTokライト ] [ Play ] -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="16dp"
-            android:text="@string/btn_install_tiktok_lite"
-            android:textColor="@color/igni_text"
-            android:textSize="16sp"
-            app:cornerRadius="14dp"
-            app:strokeColor="@color/igni_outline" />
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInstallTikTokLitePlay"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="4dp"
-            android:text="@string/btn_install_tiktok_lite_play"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallTikTokLite"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_install_tiktok_lite"
+                android:textColor="@color/igni_text"
+                android:textSize="16sp"
+                app:cornerRadius="14dp"
+                app:strokeColor="@color/igni_outline" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallTikTokLitePlay"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="88dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:minWidth="0dp"
+                android:text="@string/btn_install_tiktok_lite_play"
+                android:textColor="@color/igni_muted"
+                android:textSize="14sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tiktokLiteInstallStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="4dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="@string/tiktok_lite_status_idle"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
@@ -293,43 +325,53 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="12dp"
             android:text="@string/alive_section_title"
             android:textColor="@color/igni_text"
             android:textSize="16sp"
             android:textStyle="bold" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnInstallAlive"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+        <!-- Alive: [ アライブ ] [ 開く ] -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="wrap_content"
             android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="10dp"
-            android:text="@string/btn_install_alive"
-            android:textColor="@color/igni_text"
-            android:textSize="16sp"
-            app:cornerRadius="14dp"
-            app:strokeColor="@color/igni_outline" />
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOpenAlive"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="4dp"
-            android:text="@string/btn_open_alive"
-            android:textColor="@color/igni_muted"
-            android:textSize="14sp" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallAlive"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:text="@string/btn_install_alive"
+                android:textColor="@color/igni_text"
+                android:textSize="16sp"
+                app:cornerRadius="14dp"
+                app:strokeColor="@color/igni_outline" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenAlive"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="88dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="4dp"
+                android:minWidth="0dp"
+                android:text="@string/btn_open_alive"
+                android:textColor="@color/igni_muted"
+                android:textSize="14sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/aliveInstallStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="8dp"
-            android:lineSpacingExtra="3dp"
+            android:layout_marginTop="4dp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="@string/alive_status_idle"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
