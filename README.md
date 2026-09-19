@@ -42,7 +42,7 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - ホームは Samsung One UI / 端末標準ランチャー。許可リストにより設定・Play・Chrome・LINE・カメラ・イグニがランチャーに残る
 - Chrome: 適用時に明示 unhide + http/https 既定ハンドラ候補。Google アプリは force-hide。lock-task 既定オフ。カスタムホームなし
 - ホーム1ページ目の自動ピンはベストエフォート（多くの OEM では確認必須 → Admin に正直なステータス）
-- LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。未インストール時は適用後に Uptodown 最新（APK/XAPK）→ Play フォールバック（v1.0.13）
+- LINE: `jp.naver.line.android` を許可リストに追加し、適用時に明示 unhide。未インストール時は適用後に GitHub ミラー XAPK をサイレントインストール（v1.0.35；自動では Play を開かない）
 
 ## カメラ保護（v1.0.4）
 
@@ -101,6 +101,13 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
+
+## v1.0.35（LINE を GitHub XAPK 直DLに変更）
+
+- **LineInstaller**: Uptodown 解決をやめ、ミラー `https://github.com/mikasahahappy0526-create/i/releases/download/line/line.xapk` から HTTPS（リダイレクト追従・User-Agent）で XAPK を取得。既存の XAPK 展開＋分割 APK `PackageInstaller` はそのまま
+- 自動パスは引き続き Play を開かない。管理画面の LINE / Play ボタンは維持。ステータスは日本語のみ
+- LINE 資産: GitHub Releases タグ `line` / 資産名 `line.xapk`（26.11.0）
+- versionCode **36** / versionName **1.0.35**
 
 ## v1.0.34（ダークモード機能を完全削除）
 

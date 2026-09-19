@@ -13,6 +13,8 @@ import app.igni.dpc.policy.KeepPackages
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.ZipFile
@@ -21,10 +23,9 @@ import java.util.zip.ZipFile
  * Ensures LINE ([KeepPackages.LINE_PACKAGE]) is installed after Device Owner policy apply.
  *
  * 1. If already installed → skip.
- * 2. Resolve latest file from Uptodown eAPI (APK or XAPK) and download to cache.
- * 3. .apk → single PackageInstaller session (silent DO).
- * 4. .xapk → unzip, install all .apk splits in one session; OBB best-effort copy.
- * 5. On hard failure → log + status prefs only (never open Play from auto path).
+ * 2. Download fixed XAPK from GitHub Releases (HTTPS, follow redirects).
+ * 3. Unpack XAPK / install all .apk splits in one PackageInstaller session; OBB best-effort.
+ * 4. On hard failure → log + status prefs only (never open Play from auto path).
  *    Admin UI may call [openPlayStore] explicitly.
  *
  * Fire-and-forget; never blocks [app.igni.dpc.policy.PolicyApplier.apply].
@@ -36,6 +37,13 @@ object LineInstaller {
     private const val KEY_STATUS = "status"
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
+
+    /** Stable short mirror URL (preferred). */
+    const val XAPK_URL =
+        "https://github.com/mikasahahappy0526-create/i/releases/download/line/line.xapk"
+
+    private const val USER_AGENT = "Igni-DPC-Line/1.0.35 (Android; DeviceOwner)"
+    private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
@@ -55,7 +63,7 @@ object LineInstaller {
 
     /**
      * Synchronous attempt (call from a worker thread). Safe to call from Admin UI button.
-     * Skips overlapping runs.
+     * Skips overlapping runs. Direct GitHub XAPK + PackageInstaller — never opens Play.
      */
     fun ensureLineInstalled(context: Context) {
         val app = context.applicationContext
@@ -63,7 +71,7 @@ object LineInstaller {
             Log.i(TAG, "LINE install already in progress; skip")
             return
         }
-        val workDir = File(app.cacheDir, "line-uptodown").also {
+        val workDir = File(app.cacheDir, "line-apk").also {
             if (it.exists()) it.deleteRecursively()
             it.mkdirs()
         }
@@ -74,24 +82,9 @@ object LineInstaller {
                 return
             }
 
-            persist(app, "resolving", "Uptodown から最新 URL を解決中…")
-            val resolved = UptodownClient.resolveLatestLine()
-            if (resolved.isFailure) {
-                val err = resolved.exceptionOrNull()?.message ?: "resolve failed"
-                Log.w(TAG, "Uptodown resolve failed: $err — silent path stops (no Play)")
-                persist(app, "silent_failed", "解決失敗 ($err)")
-                return
-            }
-            val info = resolved.getOrThrow()
-            val ext = guessExtension(info.kindFile, info.downloadUrl)
-            val dest = File(workDir, "line-latest.$ext")
-
-            persist(
-                app,
-                "downloading",
-                "Uptodown からダウンロード中… (${info.version ?: "latest"} / $ext)"
-            )
-            val downloaded = UptodownClient.downloadTo(info.downloadUrl, dest)
+            persist(app, "downloading", "GitHub から XAPK をダウンロード中…")
+            val dest = File(workDir, "line.xapk")
+            val downloaded = downloadXapk(dest)
             if (downloaded.isFailure) {
                 val err = downloaded.exceptionOrNull()?.message ?: "download failed"
                 Log.w(TAG, "LINE download failed: $err — silent path stops (no Play)")
@@ -101,10 +94,8 @@ object LineInstaller {
 
             persist(app, "installing", "PackageInstaller でインストール中…")
             val installed = when {
-                ext.equals("xapk", ignoreCase = true) || looksLikeZip(dest) ->
-                    installFromXapk(app, dest, workDir)
-                else ->
-                    installApks(app, listOf(dest))
+                looksLikeZip(dest) -> installFromXapk(app, dest, workDir)
+                else -> installApks(app, listOf(dest))
             }
             if (installed.isFailure) {
                 val err = installed.exceptionOrNull()?.message ?: "install failed"
@@ -113,16 +104,14 @@ object LineInstaller {
                 return
             }
             // Session committed; final success/failure arrives via LineInstallStatusReceiver.
-            // Best-effort immediate package probe (usually still absent until commit finishes).
             if (isLineInstalled(app)) {
-                persist(app, "success", "インストール確認済み (${info.version ?: ext})")
+                persist(app, "success", "インストール確認済み")
             } else {
                 persist(app, "installing", "インストール要求を送信済み（結果はログ）")
             }
             Log.i(TAG, "LINE PackageInstaller session committed (fire-and-forget)")
         } finally {
             busy.set(false)
-            // Keep cache briefly for debugging; wipe empty leftovers on next run.
         }
     }
 
@@ -132,7 +121,6 @@ object LineInstaller {
             true
         }.getOrDefault(false)
     }
-
 
     /** Short Japanese-only status for Admin UI (no English keys / long tails). */
     fun lastStatusText(context: Context): String {
@@ -170,19 +158,53 @@ object LineInstaller {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    private fun guessExtension(kindFile: String?, url: String): String {
-        val kind = kindFile?.lowercase().orEmpty()
-        when {
-            kind.contains("xapk") -> return "xapk"
-            kind.contains("apk") -> return "apk"
+    private fun downloadXapk(dest: File): Result<File> = runCatching {
+        dest.parentFile?.mkdirs()
+        if (dest.exists()) dest.delete()
+        val connection = openGetFollowingRedirects(XAPK_URL)
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) error("HTTP $code")
+            connection.inputStream.use { input ->
+                FileOutputStream(dest).use { output -> input.copyTo(output) }
+            }
+            // LINE XAPK is ~160MB; reject tiny / error HTML pages.
+            if (dest.length() < 1_000_000L) {
+                dest.delete()
+                error("Downloaded file too small (${dest.length()})")
+            }
+            Log.i(TAG, "Downloaded ${dest.length()} bytes from $XAPK_URL")
+            dest
+        } finally {
+            connection.disconnect()
         }
-        val path = url.substringBefore('?').lowercase()
-        return when {
-            path.endsWith(".xapk") -> "xapk"
-            path.endsWith(".apks") -> "xapk"
-            path.endsWith(".apkm") -> "xapk"
-            path.endsWith(".apk") -> "apk"
-            else -> "xapk" // LINE on Uptodown is typically XAPK
+    }
+
+    private fun openGetFollowingRedirects(url: String): HttpURLConnection {
+        var current = url
+        var redirects = 0
+        while (true) {
+            val connection = (URL(current).openConnection() as HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                connectTimeout = 20_000
+                readTimeout = 300_000
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", USER_AGENT)
+                setRequestProperty("Accept", "*/*")
+            }
+            val code = connection.responseCode
+            if (code in REDIRECT_CODES) {
+                val location = connection.getHeaderField("Location")
+                connection.disconnect()
+                if (location.isNullOrBlank()) error("Redirect $code without Location")
+                current = if (location.startsWith("http")) location else {
+                    URL(URL(current), location).toString()
+                }
+                redirects++
+                if (redirects > 8) error("Too many redirects")
+                continue
+            }
+            return connection
         }
     }
 
@@ -235,7 +257,7 @@ object LineInstaller {
         }
     }
 
-    /** Best-effort OBB copy to Android/obb/<pkg>/; on failure leave Play fallback to caller. */
+    /** Best-effort OBB copy to Android/obb/<pkg>/; on failure continue APK install. */
     private fun copyObbsBestEffort(context: Context, obbs: List<File>) {
         val obbRoot = runCatching {
             File(

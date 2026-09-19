@@ -48,10 +48,10 @@
     <string name="btn_install_line">LINE</string>
     <string name="btn_install_line_play">Play</string>
     <string name="line_status_idle">未インストール</string>
-    <string name="line_install_note">ポリシー適用後、LINE 未インストールなら Uptodown の最新版（APK/XAPK）を取得してサイレントインストールします。失敗時はログとステータスのみ（自動では Play を開きません）。管理画面の「Playで入れる」から明示的に開けます。</string>
+    <string name="line_install_note">ポリシー適用後、LINE 未インストールなら GitHub の XAPK を取得してサイレントインストールします。失敗時はログとステータスのみ（自動では Play を開きません）。管理画面の「Playで入れる」から明示的に開けます。</string>
     <string name="toast_line_install_started">LINE インストールを開始しました</string>
     <string name="toast_line_play_opened">Play ストアで LINE を開きました</string>
-    <string name="line_disclaimer">非公式配布（Uptodown）・改変リスクあり・Playより危険</string>
+    <string name="line_disclaimer">GitHub Releases 配布（ミラー）・Play より非公式</string>
 
     <string name="btn_install_chrome">Chrome</string>
     <string name="btn_install_chrome_play">Play</string>
