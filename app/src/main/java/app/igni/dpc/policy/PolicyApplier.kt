@@ -2,7 +2,6 @@ package app.igni.dpc.policy
 
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.UiModeManager
 import android.app.ActivityManager
 import android.app.AlarmManager
 import android.app.admin.DevicePolicyManager
@@ -23,7 +22,6 @@ import app.igni.dpc.BuildConfig
 import app.igni.dpc.UninstallStatusReceiver
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.alive.AliveInstaller
-import app.igni.dpc.darkmode.DarkModeHelper
 import app.igni.dpc.line.LineInstaller
 
 data class ApplyResult(
@@ -34,7 +32,6 @@ data class ApplyResult(
     val message: String? = null,
     val screenTimeoutMs: Int? = null,
     val cameraPackages: List<String> = emptyList(),
-    val darkMode: DarkModeStatus? = null,
     val audio: AudioStatus? = null,
     val googleApp: GoogleAppStatus? = null,
     val chromeDefaultBrowser: String? = null
@@ -72,21 +69,6 @@ data class AudioStatus(
 )
 
 /**
- * Result of night / dark-mode apply for Admin UI and logs.
- * [result]: success | fail | unsupported | never
- */
-data class DarkModeStatus(
-    val sdkInt: Int,
-    val uiModeManagerAvailable: Boolean,
-    val setNightModeActivatedAvailable: Boolean,
-    val systemDarkThemeLikely: Boolean,
-    /** Samsung One UI Settings.System display_night_theme read-back (1 = on), or null if unread. */
-    val displayNightTheme: Int? = null,
-    val result: String,
-    val detail: String
-)
-
-/**
  * Idempotent Device Owner policy:
  * - Prefer **silent uninstall** for every non-keep package (user + system/updated-system).
  * - Hide (`setApplicationHidden`) only as **fallback** when uninstall fails / stub remains
@@ -102,7 +84,7 @@ data class DarkModeStatus(
  * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
  * - After policies: async silent install LINE / Chrome / Alive if missing (never Play).
  * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
- * - Apply display defaults: forced dark (DarkModeHelper car-mode poke) + 30-minute timeout.
+ * - Apply display defaults: 30-minute screen timeout.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  * - Force system locale Japanese (ja_JP) + time zone Asia/Tokyo (best-effort; every apply).
  *
@@ -115,9 +97,6 @@ class PolicyApplier(context: Context) {
     private val admin = AdminReceiver.componentName(appContext)
     private val store = HiddenStore(appContext)
     private val keep = KeepPackages(appContext)
-    private val darkPrefs = appContext
-        .createDeviceProtectedStorageContext()
-        .getSharedPreferences(DARK_PREFS, Context.MODE_PRIVATE)
 
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(appContext.packageName)
 
@@ -140,27 +119,6 @@ class PolicyApplier(context: Context) {
         }.getOrNull()
     }
 
-    /** Last dark-mode apply status (persisted), or a never-applied snapshot. */
-    fun darkModeStatus(): DarkModeStatus {
-        val stored = darkPrefs.getString(KEY_DARK_RESULT, null)
-        if (stored == null) {
-            return probeDarkModeCapabilities(result = "never", detail = "未適用")
-        }
-        val nightThemeStored = if (darkPrefs.contains(KEY_DARK_NIGHT_THEME)) {
-            darkPrefs.getInt(KEY_DARK_NIGHT_THEME, -1).takeIf { it >= 0 }
-        } else {
-            null
-        }
-        return DarkModeStatus(
-            sdkInt = darkPrefs.getInt(KEY_DARK_SDK, Build.VERSION.SDK_INT),
-            uiModeManagerAvailable = darkPrefs.getBoolean(KEY_DARK_UIM_OK, true),
-            setNightModeActivatedAvailable = darkPrefs.getBoolean(KEY_DARK_ACTIVATED_OK, false),
-            systemDarkThemeLikely = darkPrefs.getBoolean(KEY_DARK_LIKELY, Build.VERSION.SDK_INT >= 29),
-            displayNightTheme = nightThemeStored,
-            result = stored,
-            detail = darkPrefs.getString(KEY_DARK_DETAIL, "").orEmpty()
-        )
-    }
 
     /** Current ringer mode + music/ring volumes (live), for Admin UI. */
     fun audioStatus(): AudioStatus {
@@ -206,7 +164,6 @@ class PolicyApplier(context: Context) {
                 hiddenCount = store.snapshot().size,
                 message = "not_device_owner",
                 cameraPackages = detectedCameraPackages(),
-                darkMode = darkModeStatus(),
                 audio = audioStatus()
             )
         }
@@ -406,8 +363,7 @@ class PolicyApplier(context: Context) {
         // Prefer Chrome as http/https VIEW handler (not Google app).
         val chromeBrowser = preferChromeAsDefaultBrowser()
 
-        // Display policies: dark mode + 30 min screen timeout (best-effort; never fail apply).
-        val dark = applyDarkMode()
+        // Display policies: 30 min screen timeout (best-effort; never fail apply).
         val timeoutMs = applyScreenTimeout()
 
         // Audio: silent/manner + all volumes 0 (best-effort; never fail apply).
@@ -423,7 +379,7 @@ class PolicyApplier(context: Context) {
             "Apply complete hidden=${hidden.size} newlyHidden=$newlyHidden " +
                 "uninstallRequested=$uninstallRequested hideFallback=$hideFallback " +
                 "cameras=${cameras.size} " +
-                "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
+                "timeoutMs=$timeoutMs audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
@@ -442,7 +398,6 @@ class PolicyApplier(context: Context) {
             uninstallRequested = uninstallRequested,
             screenTimeoutMs = timeoutMs,
             cameraPackages = cameras.sorted(),
-            darkMode = dark,
             audio = audio,
             googleApp = googleStatus,
             chromeDefaultBrowser = chromeBrowser
@@ -816,60 +771,6 @@ class PolicyApplier(context: Context) {
         else -> "unknown($mode)"
     }
 
-    /**
-     * System-wide night / dark mode via [DarkModeHelper] (Samsung One UI car-mode poke,
-     * permission grants, cmd uimode, binder IUiModeManager, SEM reflection).
-     * Failures logged; apply() still succeeds. Re-applied on every policy apply / boot.
-     */
-    private fun applyDarkMode(): DarkModeStatus {
-        val status = DarkModeHelper.apply(appContext)
-        persistDarkModeStatus(status)
-        return status
-    }
-
-    /** Admin「ダークモード」button / callers that only need night force + persist. */
-    fun reapplyDarkMode(): DarkModeStatus = applyDarkMode()
-
-    private fun persistDarkModeStatus(status: DarkModeStatus) {
-        val editor = darkPrefs.edit()
-            .putInt(KEY_DARK_SDK, status.sdkInt)
-            .putBoolean(KEY_DARK_UIM_OK, status.uiModeManagerAvailable)
-            .putBoolean(KEY_DARK_ACTIVATED_OK, status.setNightModeActivatedAvailable)
-            .putBoolean(KEY_DARK_LIKELY, status.systemDarkThemeLikely)
-            .putString(KEY_DARK_RESULT, status.result)
-            .putString(KEY_DARK_DETAIL, status.detail)
-        if (status.displayNightTheme != null) {
-            editor.putInt(KEY_DARK_NIGHT_THEME, status.displayNightTheme)
-        } else {
-            editor.remove(KEY_DARK_NIGHT_THEME)
-        }
-        editor.apply()
-    }
-
-    private fun probeDarkModeCapabilities(result: String, detail: String): DarkModeStatus {
-        val sdk = Build.VERSION.SDK_INT
-        val uiMode = appContext.getSystemService(UiModeManager::class.java)
-        val activatedApi = sdk >= Build.VERSION_CODES.R &&
-            runCatching {
-                UiModeManager::class.java.getMethod(
-                    "setNightModeActivated",
-                    Boolean::class.javaPrimitiveType
-                )
-                true
-            }.getOrDefault(false)
-        val nightTheme = runCatching {
-            Settings.System.getInt(appContext.contentResolver, SYSTEM_DISPLAY_NIGHT_THEME)
-        }.getOrNull()
-        return DarkModeStatus(
-            sdkInt = sdk,
-            uiModeManagerAvailable = uiMode != null,
-            setNightModeActivatedAvailable = activatedApi,
-            systemDarkThemeLikely = sdk >= 29,
-            displayNightTheme = nightTheme,
-            result = result,
-            detail = detail
-        )
-    }
 
     /**
      * Screen-off timeout 30 minutes.
@@ -1518,8 +1419,6 @@ class PolicyApplier(context: Context) {
 
     companion object {
         private const val TAG = "IgniPolicy"
-        /** Samsung One UI: Settings.System display_night_theme (1 = dark). */
-        private const val SYSTEM_DISPLAY_NIGHT_THEME = "display_night_theme"
         /** 30 minutes in milliseconds. */
         const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
         /** System language for Japan provisioning / policy reapply. */
@@ -1530,14 +1429,5 @@ class PolicyApplier(context: Context) {
             PackageManager.MATCH_DISABLED_COMPONENTS or
                 PackageManager.MATCH_UNINSTALLED_PACKAGES or
                 PackageManager.MATCH_ALL
-
-        private const val DARK_PREFS = "igni_dark_mode"
-        private const val KEY_DARK_SDK = "sdk"
-        private const val KEY_DARK_UIM_OK = "uim_ok"
-        private const val KEY_DARK_ACTIVATED_OK = "activated_ok"
-        private const val KEY_DARK_LIKELY = "likely"
-        private const val KEY_DARK_RESULT = "result"
-        private const val KEY_DARK_DETAIL = "detail"
-        private const val KEY_DARK_NIGHT_THEME = "display_night_theme"
     }
 }

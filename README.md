@@ -102,6 +102,16 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.34（ダークモード機能を完全削除）
+
+モーリー氏報告: ダークモードが依然として効かないため、機能自体を撤去。
+
+- **Admin UI**: 「ダークモード」ボタンおよびダーク関連ステータス表示／専用 strings を削除
+- **PolicyApplier / BootReceiver**: `DarkModeHelper` / `applyDarkMode` 呼び出しと永続化・refresh コードを削除（画面タイムアウト等の他ポリシーは維持）
+- **削除**: `DarkModeHelper.kt`、`MODIFY_DAY_NIGHT_MODE` 権限、`DarkModeStatus`
+- 維持: FORCE_UNINSTALL / 個人用に戻す keep-only unhide、機内、アライブ自動、LINE（Uptodown）、Chrome 保護、ja_JP、Admin UI
+- versionCode **35** / versionName **1.0.34**
+
 ## v1.0.33（ダークモード強制強化＋Admin「ダークモード」設定ボタン）
 
 モーリー氏報告: ダークモード自動切替がまだ効かない端末向け。

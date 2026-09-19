@@ -17,7 +17,7 @@ class BootReceiver : BroadcastReceiver() {
         }
         val applier = PolicyApplier(context)
         if (!applier.isDeviceOwner()) return
-        Log.i(TAG, "Re-applying policy (incl. dark mode) after $action")
+        Log.i(TAG, "Re-applying policy after $action")
         applier.apply()
     }
 

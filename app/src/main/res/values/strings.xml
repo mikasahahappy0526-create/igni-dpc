@@ -8,7 +8,7 @@
     <string name="hint_not_owner">Device Owner ではありません。工場出荷状態にリセットしたうえで、セットアップ画面でQRコードを読み取り、このアプリを端末管理者としてプロビジョニングしてください。</string>
     <string name="btn_reapply">ポリシーを再適用</string>
     <string name="btn_unhide">アプリ一覧を表示に戻す</string>
-    <string name="reapply_note">「ポリシーを再適用」は、許可リスト外（Googleスイート・Yahoo／Y!mobile／キャリア系を含む）をアンインストール優先で除去します（失敗時のみ非表示）。ホームの再設定・ダークモード強化・マナー（サイレント）／音量0も再適用します。</string>
+    <string name="reapply_note">「ポリシーを再適用」は、許可リスト外（Googleスイート・Yahoo／Y!mobile／キャリア系を含む）をアンインストール優先で除去します（失敗時のみ非表示）。ホームの再設定・マナー（サイレント）／音量0も再適用します。</string>
     <string name="unhide_note">「アプリ一覧を表示に戻す」は、非表示にしたシステムアプリのみ再表示できます。すでにアンインストールしたユーザーアプリは復元できません（Playストア等から再インストールが必要です）。</string>
     <string name="allowlist_title">許可リスト（残す）</string>
     <string name="hidden_count">これまでに非表示にしたアプリ: %d 件</string>
@@ -16,11 +16,6 @@
     <string name="screen_timeout_unknown">画面オフタイムアウト: （取得できません）</string>
     <string name="camera_packages_value">検出カメラ (%1$d): %2$s</string>
     <string name="camera_packages_none">検出カメラ: （なし — OEMカメラが見つかりません）</string>
-    <string name="dark_mode_sdk">Android SDK: %1$d（%2$s）</string>
-    <string name="dark_mode_apis">ダークAPI: UiModeManager=%1$s / setNightModeActivated=%2$s / システム暗色テーマ想定=%3$s</string>
-    <string name="dark_mode_result">ダーク適用結果: %1$s\n%2$s</string>
-    <string name="dark_mode_samsung">Samsung display_night_theme: %1$s</string>
-    <string name="dark_mode_note_pre_q">この OS（Android 10 未満）ではシステム全体のダークテーマが利用できない場合があります。</string>
     <string name="audio_status_value">音声: 着信モード=%1$s / メディア=%2$s / 着信音=%3$s</string>
     <string name="audio_status_unknown">音声: （取得できません）</string>
     <string name="lock_task_note">Lock Task は BuildConfig.ENABLE_LOCK_TASK で有効化されています。</string>
@@ -102,10 +97,6 @@
     <string name="return_personal_status_not_owner">個人用に戻す: Device Owner ではありません</string>
 
     <string name="airplane_mode_label">機内モード</string>
-    <string name="btn_dark_mode_settings">ダークモード</string>
-    <string name="toast_dark_mode_forced">ダークモードを再適用しました</string>
-    <string name="toast_dark_mode_open_settings">ダークモード設定を開きました</string>
-    <string name="toast_dark_mode_settings_failed">ダークモード設定を開けませんでした</string>
     <string name="toast_airplane_on">機内モードをオンにしました</string>
     <string name="toast_airplane_off">機内モードをオフにしました</string>
     <string name="toast_airplane_failed">機内モードの切替に失敗しました</string>

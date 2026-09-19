@@ -1,17 +1,14 @@
 package app.igni.dpc
 
-import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import app.igni.dpc.databinding.ActivityAdminBinding
 import app.igni.dpc.policy.AudioStatus
-import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.GoogleAppStatus
 import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.airplane.AirplaneModeHelper
-import app.igni.dpc.darkmode.DarkModeHelper
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.PolicyApplier
@@ -54,7 +51,6 @@ class AdminActivity : AppCompatActivity() {
         binding.switchAirplaneMode.setOnCheckedChangeListener { _, isChecked ->
             onAirplaneSwitchChanged(isChecked)
         }
-        binding.btnDarkModeSettings.setOnClickListener { onDarkModeButton() }
 
         maybeReapplyAfterVersionChange()
 
@@ -120,7 +116,6 @@ class AdminActivity : AppCompatActivity() {
         updateTimeoutLabel(applier.currentScreenTimeoutMs())
         updateAudioLabel(applier.audioStatus())
         updateCameraLabel(applier.detectedCameraPackages())
-        updateDarkModeLabel(applier.darkModeStatus())
         binding.allowlist.text = applier.allowlistForDisplay().joinToString("\n")
         binding.lockTaskNote.isVisible = false // orange notes hidden (v1.0.22+)
         val busy = binding.progress.isVisible
@@ -186,27 +181,6 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateDarkModeLabel(status: DarkModeStatus) {
-        val release = Build.VERSION.RELEASE ?: "?"
-        binding.darkModeSdk.text = getString(R.string.dark_mode_sdk, status.sdkInt, "Android $release")
-        binding.darkModeApis.text = getString(
-            R.string.dark_mode_apis,
-            yesNo(status.uiModeManagerAvailable),
-            yesNo(status.setNightModeActivatedAvailable),
-            yesNo(status.systemDarkThemeLikely)
-        )
-        binding.darkModeResult.text = getString(
-            R.string.dark_mode_result,
-            status.result,
-            status.detail
-        )
-        val nightThemeLabel = status.displayNightTheme?.toString() ?: "—"
-        binding.darkModeSamsung.text = getString(R.string.dark_mode_samsung, nightThemeLabel)
-        // Orange disclaimer/notes hidden for Admin UI polish (v1.0.22+)
-        binding.darkModeNote.isVisible = false
-    }
-
-    private fun yesNo(value: Boolean): String = if (value) "あり" else "なし"
 
     private fun reapply() {
         setBusy(true)
@@ -224,7 +198,6 @@ class AdminActivity : AppCompatActivity() {
                 }
                 result.audio?.let { updateAudioLabel(it) }
                 updateCameraLabel(result.cameraPackages)
-                result.darkMode?.let { updateDarkModeLabel(it) }
                 result.googleApp?.let { updateGoogleLabel(it) }
                 result.chromeDefaultBrowser?.let { browser ->
                     binding.chromeBrowserStatus.text = getString(
@@ -526,38 +499,6 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
-
-    /**
-     * Compact Admin「ダークモード」: force UiMode once more; if still not dark, open
-     * Samsung One UI dark-mode Settings (or Display / Settings fallback).
-     */
-    private fun onDarkModeButton() {
-        binding.btnDarkModeSettings.isEnabled = false
-        executor.execute {
-            val status = PolicyApplier(this).reapplyDarkMode()
-            val stillOff = !DarkModeHelper.isNightOn(this)
-            val opened = if (stillOff) DarkModeHelper.openDarkModeSettings(this) else null
-            runOnUiThread {
-                binding.btnDarkModeSettings.isEnabled = true
-                updateDarkModeLabel(status)
-                when {
-                    !stillOff -> {
-                        Toast.makeText(this, R.string.toast_dark_mode_forced, Toast.LENGTH_SHORT).show()
-                    }
-                    opened != null && opened.opened -> {
-                        Toast.makeText(this, R.string.toast_dark_mode_open_settings, Toast.LENGTH_SHORT).show()
-                    }
-                    else -> {
-                        Toast.makeText(this, R.string.toast_dark_mode_settings_failed, Toast.LENGTH_SHORT).show()
-                    }
-                }
-                LogI(
-                    "DarkMode button status=${status.result} stillOff=$stillOff " +
-                        "opened=${opened?.via}"
-                )
-            }
-        }
-    }
 
     companion object {
         private const val PREFS_UPDATE = "igni_update"
