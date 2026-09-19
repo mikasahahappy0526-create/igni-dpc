@@ -102,6 +102,19 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.36（充電情報を表示 OFF）
+
+モーリー氏報告: Galaxy A23 / Sense 系でロック画面の「充電情報を表示」（充電中の残量％・満充電までの時間）をセットアップ時にオフにしたい。
+
+- **PolicyApplier.apply()**（再適用含む）でベストエフォート `applyChargingInfoOff()`:
+  - 候補キーに `0` を書込: `show_charging_info` / `sec_show_charging_info` / `lock_screen_show_charging_info` / `charging_info` / `display_charging_info` / `charging_information` ほか Samsung / Sense 系バリアント
+  - `Settings.System` / `Secure` / `Global` の `putInt`、反射 `DPM.setSystemSetting` / `setSecureSetting` / `setGlobalSetting`、Samsung `SemSettings.System.putInt`
+  - **触らない**: `show_battery_percent`（ステータスバー電池％とは別）
+  - 成功したキーをログ。存在しなくてもクラッシュしない
+- Admin 専用 UI は不要（declutter 維持）。ダークモードは v1.0.34 で撤去済みのまま
+- 維持: LINE GitHub XAPK、Alive 自動、FORCE_UNINSTALL、機内、ja_JP、Chrome 保護
+- versionCode **37** / versionName **1.0.36**
+
 ## v1.0.35（LINE を GitHub XAPK 直DLに変更）
 
 - **LineInstaller**: Uptodown 解決をやめ、ミラー `https://github.com/mikasahahappy0526-create/i/releases/download/line/line.xapk` から HTTPS（リダイレクト追従・User-Agent）で XAPK を取得。既存の XAPK 展開＋分割 APK `PackageInstaller` はそのまま

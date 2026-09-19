@@ -87,6 +87,8 @@ data class AudioStatus(
  * - Apply display defaults: 30-minute screen timeout.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  * - Force system locale Japanese (ja_JP) + time zone Asia/Tokyo (best-effort; every apply).
+ * - Best-effort OFF for OEM「充電情報を表示」(Show charging information) on lock screen
+ *   (Samsung Galaxy A23 / Sense-series); never touches status-bar battery %.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -372,6 +374,9 @@ class PolicyApplier(context: Context) {
         // System language Japanese + Asia/Tokyo (best-effort; re-applied every policy apply).
         val localeTz = applyJapaneseLocaleAndTimeZone()
 
+        // OEM lock-screen「充電情報を表示」OFF (Samsung / Sense; best-effort every apply).
+        val chargingInfo = applyChargingInfoOff()
+
         store.replace(hidden)
         store.markApplied()
         Log.i(
@@ -383,7 +388,8 @@ class PolicyApplier(context: Context) {
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
-                "chromeBrowser=$chromeBrowser localeTz=$localeTz"
+                "chromeBrowser=$chromeBrowser localeTz=$localeTz " +
+                "chargingInfo=$chargingInfo"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
         // TikTok Lite is force-removed (never install).
@@ -1186,6 +1192,173 @@ class PolicyApplier(context: Context) {
         }
     }
 
+
+    /**
+     * Turn OFF OEM「充電情報を表示」(Show charging information) on the lock screen
+     * while charging (battery % / time-to-full overlay). Samsung Galaxy A23 / One UI
+     * path: Settings → Display → 充電情報を表示. Also probes Sharp/AQUOS Sense /
+     * Kyocera Sense-style keys.
+     *
+     * Best-effort: write 0 / "0" / false via Settings.System / Secure / Global,
+     * reflective DPM setSystemSetting / setSecureSetting / setGlobalSetting,
+     * and Samsung SemSettings.putInt when present. Never crashes apply().
+     *
+     * Does **not** touch `show_battery_percent` (status-bar battery %).
+     *
+     * @return short log summary of successful writes (or none).
+     */
+    private fun applyChargingInfoOff(): String {
+        val cr = appContext.contentResolver
+        val written = mutableListOf<String>()
+        val notes = mutableListOf<String>()
+        val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+        val brand = Build.BRAND.orEmpty().lowercase()
+        val isSamsung = manufacturer.contains("samsung") || brand.contains("samsung")
+        val isSenseOem =
+            manufacturer.contains("sharp") || brand.contains("sharp") ||
+                manufacturer.contains("kyocera") || brand.contains("kyocera") ||
+                manufacturer.contains("fcnt") || brand.contains("fcnt") ||
+                brand.contains("aquos")
+
+        // Prefer Samsung-documented / common OEM keys first.
+        val keys = linkedSetOf(
+            "show_charging_info",
+            "sec_show_charging_info",
+            "lock_screen_show_charging_info",
+            "charging_info",
+            "display_charging_info",
+            "charging_information",
+            "lockscreen_show_charging_info",
+            "lock_screen_charging_info",
+            "show_charging_information",
+            "sec_lock_screen_show_charging_info",
+            // Custom-ROM / AOSP-adjacent cousins (harmless if absent)
+            "lockscreen_battery_info",
+            "lockscreen_charging_info",
+        )
+        if (isSenseOem) {
+            keys.addAll(
+                listOf(
+                    "show_charging_info",
+                    "charging_info_display",
+                    "display_charging_information",
+                    "jp_show_charging_info",
+                    "sense_show_charging_info",
+                    "aquos_show_charging_info",
+                )
+            )
+            notes += "senseOem=true"
+            Log.i(TAG, "Charging-info OFF: Sense/Sharp/Kyocera OEM probe (keys=${keys.size})")
+        }
+        if (isSamsung) {
+            notes += "samsung=true"
+            Log.i(TAG, "Charging-info OFF: Samsung One UI probe")
+        }
+
+        fun tryPutSystem(key: String): Boolean {
+            return runCatching {
+                val ok = Settings.System.putInt(cr, key, 0)
+                if (ok) {
+                    written += "System.putInt:$key=0"
+                    Log.i(TAG, "Charging-info OFF wrote Settings.System.$key=0")
+                }
+                ok
+            }.onFailure {
+                Log.w(TAG, "Settings.System.putInt($key) failed", it)
+            }.getOrDefault(false)
+        }
+
+        fun tryPutSecure(key: String): Boolean {
+            return runCatching {
+                val ok = Settings.Secure.putInt(cr, key, 0)
+                if (ok) {
+                    written += "Secure.putInt:$key=0"
+                    Log.i(TAG, "Charging-info OFF wrote Settings.Secure.$key=0")
+                }
+                ok
+            }.onFailure {
+                Log.w(TAG, "Settings.Secure.putInt($key) failed", it)
+            }.getOrDefault(false)
+        }
+
+        fun tryPutGlobal(key: String): Boolean {
+            return runCatching {
+                val ok = Settings.Global.putInt(cr, key, 0)
+                if (ok) {
+                    written += "Global.putInt:$key=0"
+                    Log.i(TAG, "Charging-info OFF wrote Settings.Global.$key=0")
+                }
+                ok
+            }.onFailure {
+                Log.w(TAG, "Settings.Global.putInt($key) failed", it)
+            }.getOrDefault(false)
+        }
+
+        fun tryDpmSetting(methodName: String, key: String): Boolean {
+            return runCatching {
+                val method = DevicePolicyManager::class.java.getMethod(
+                    methodName,
+                    ComponentName::class.java,
+                    String::class.java,
+                    String::class.java
+                )
+                method.invoke(dpm, admin, key, "0")
+                written += "DPM.$methodName:$key=0"
+                Log.i(TAG, "Charging-info OFF DPM.$methodName($key, 0)")
+                true
+            }.onFailure {
+                // Method missing or OEM reject — expected on many builds.
+                Log.w(TAG, "DPM.$methodName($key) unavailable/failed", it)
+            }.getOrDefault(false)
+        }
+
+        fun trySemSettings(key: String): Boolean {
+            return runCatching {
+                val sem = Class.forName("android.provider.SemSettings\$System")
+                val putInt = sem.getMethod(
+                    "putInt",
+                    android.content.ContentResolver::class.java,
+                    String::class.java,
+                    Int::class.javaPrimitiveType
+                )
+                val ok = putInt.invoke(null, cr, key, 0) as? Boolean ?: true
+                if (ok) {
+                    written += "SemSettings.System.putInt:$key=0"
+                    Log.i(TAG, "Charging-info OFF SemSettings.System.putInt($key, 0)")
+                }
+                ok
+            }.onFailure {
+                Log.w(TAG, "SemSettings.System.putInt($key) unavailable/failed", it)
+            }.getOrDefault(false)
+        }
+
+        for (key in keys) {
+            tryPutSystem(key)
+            tryPutSecure(key)
+            tryPutGlobal(key)
+            tryDpmSetting("setSystemSetting", key)
+            tryDpmSetting("setSecureSetting", key)
+            tryDpmSetting("setGlobalSetting", key)
+            if (isSamsung) {
+                trySemSettings(key)
+            }
+        }
+
+        // Extra SemSettings pass for preferred Samsung keys even if brand string odd.
+        if (!isSamsung) {
+            for (key in listOf("show_charging_info", "sec_show_charging_info")) {
+                trySemSettings(key)
+            }
+        }
+
+        val summary = if (written.isEmpty()) {
+            "none (${notes.joinToString(",")}; tried=${keys.size} keys)"
+        } else {
+            "ok ${written.distinct().joinToString("; ")}"
+        }
+        Log.i(TAG, "Charging-info OFF apply: $summary")
+        return summary
+    }
 
     /**
      * Force system locale to Japanese (ja_JP) and time zone to Asia/Tokyo.
