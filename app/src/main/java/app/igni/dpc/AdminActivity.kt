@@ -11,6 +11,7 @@ import app.igni.dpc.policy.DarkModeStatus
 import app.igni.dpc.policy.GoogleAppStatus
 import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.airplane.AirplaneModeHelper
+import app.igni.dpc.darkmode.DarkModeHelper
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.PolicyApplier
@@ -53,6 +54,7 @@ class AdminActivity : AppCompatActivity() {
         binding.switchAirplaneMode.setOnCheckedChangeListener { _, isChecked ->
             onAirplaneSwitchChanged(isChecked)
         }
+        binding.btnDarkModeSettings.setOnClickListener { onDarkModeButton() }
 
         maybeReapplyAfterVersionChange()
 
@@ -520,6 +522,39 @@ class AdminActivity : AppCompatActivity() {
                     else -> result.messageJa.ifBlank { getString(R.string.toast_airplane_failed) }
                 }
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+
+    /**
+     * Compact Admin「ダークモード」: force UiMode once more; if still not dark, open
+     * Samsung One UI dark-mode Settings (or Display / Settings fallback).
+     */
+    private fun onDarkModeButton() {
+        binding.btnDarkModeSettings.isEnabled = false
+        executor.execute {
+            val status = PolicyApplier(this).reapplyDarkMode()
+            val stillOff = !DarkModeHelper.isNightOn(this)
+            val opened = if (stillOff) DarkModeHelper.openDarkModeSettings(this) else null
+            runOnUiThread {
+                binding.btnDarkModeSettings.isEnabled = true
+                updateDarkModeLabel(status)
+                when {
+                    !stillOff -> {
+                        Toast.makeText(this, R.string.toast_dark_mode_forced, Toast.LENGTH_SHORT).show()
+                    }
+                    opened != null && opened.opened -> {
+                        Toast.makeText(this, R.string.toast_dark_mode_open_settings, Toast.LENGTH_SHORT).show()
+                    }
+                    else -> {
+                        Toast.makeText(this, R.string.toast_dark_mode_settings_failed, Toast.LENGTH_SHORT).show()
+                    }
+                }
+                LogI(
+                    "DarkMode button status=${status.result} stillOff=$stillOff " +
+                        "opened=${opened?.via}"
+                )
             }
         }
     }

@@ -102,6 +102,17 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.33（ダークモード強制強化＋Admin「ダークモード」設定ボタン）
+
+モーリー氏報告: ダークモード自動切替がまだ効かない端末向け。
+
+- **DarkModeHelper 強化**: car-mode poke を2回＋待機延長、追加 OEM キー（`dark_mode_state` / `ui_night_mode_override` 等）、`settings put` shell、追加ブロードキャスト、binder `setNightModeActivated`。既存の grants / display_night_theme / ui_night_mode / cmd uimode / SEM・Knox 反射は維持
+- **正直な成功判定**: `result=success` はプローブ（`display_night_theme==1` / `ui_night_mode==2` / `nightMode==YES` / `UI_MODE_NIGHT_YES`）が ON のときのみ。書込だけ成功しても fail
+- **Boot / ポリシー適用**: 従来どおり `PolicyApplier.apply()` 経由で再適用（BootReceiver 含む）
+- **Admin 小ボタン「ダークモード」**: 機内モード付近。押下で強制再適用 → まだ暗い場合は Samsung One UI ダーク設定 Activity を PackageManager で解決して起動（`Settings$DarkModeSettingsActivity` 等）→ 失敗時は `ACTION_DISPLAY_SETTINGS` → `ACTION_SETTINGS`。開けなければトースト
+- 維持: FORCE_UNINSTALL / 個人用に戻す keep-only unhide、機内、アライブ自動、Chrome 保護、ja_JP、Admin UI declutter
+- versionCode **34** / versionName **1.0.33**
+
 ## v1.0.32（FORCE_UNINSTALL 強化・個人用に戻すでブロート再表示しない）
 
 モーリー氏 Y!mobile nubia 報告: 「個人用に戻す」後に、非表示だけだった Google スイート／Yahoo／キャリア系がランチャーに戻る問題への対応。

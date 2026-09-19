@@ -102,6 +102,10 @@
     <string name="return_personal_status_not_owner">個人用に戻す: Device Owner ではありません</string>
 
     <string name="airplane_mode_label">機内モード</string>
+    <string name="btn_dark_mode_settings">ダークモード</string>
+    <string name="toast_dark_mode_forced">ダークモードを再適用しました</string>
+    <string name="toast_dark_mode_open_settings">ダークモード設定を開きました</string>
+    <string name="toast_dark_mode_settings_failed">ダークモード設定を開けませんでした</string>
     <string name="toast_airplane_on">機内モードをオンにしました</string>
     <string name="toast_airplane_off">機内モードをオフにしました</string>
     <string name="toast_airplane_failed">機内モードの切替に失敗しました</string>

@@ -819,13 +819,16 @@ class PolicyApplier(context: Context) {
     /**
      * System-wide night / dark mode via [DarkModeHelper] (Samsung One UI car-mode poke,
      * permission grants, cmd uimode, binder IUiModeManager, SEM reflection).
-     * Failures logged; apply() still succeeds. Re-applied on every policy apply.
+     * Failures logged; apply() still succeeds. Re-applied on every policy apply / boot.
      */
     private fun applyDarkMode(): DarkModeStatus {
         val status = DarkModeHelper.apply(appContext)
         persistDarkModeStatus(status)
         return status
     }
+
+    /** Admin「ダークモード」button / callers that only need night force + persist. */
+    fun reapplyDarkMode(): DarkModeStatus = applyDarkMode()
 
     private fun persistDarkModeStatus(status: DarkModeStatus) {
         val editor = darkPrefs.edit()
