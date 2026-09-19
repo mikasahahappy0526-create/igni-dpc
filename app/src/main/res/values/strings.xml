@@ -76,7 +76,6 @@
     <string name="toast_alive_install_started">アライブ インストールを開始しました</string>
     <string name="toast_alive_opened">アライブを開きました</string>
     <string name="toast_alive_not_installed">アライブはまだインストールされていません</string>
-    <string name="alive_section_title">アライブ</string>
 
     <string name="google_app_status_value">Googleアプリ: %1$s</string>
     <string name="home_layout_status_value">%1$s</string>
