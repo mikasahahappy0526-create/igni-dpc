@@ -1,9 +1,10 @@
 # イグニ DPC（Device Policy Controller）
 
-完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**端末標準ホーム（Samsung One UI 等）**のまま、許可リスト外について次を適用します。設定・Play・Chrome・LINE・カメラは表示を維持します。
+完全管理端末（Device Owner）向けの最小 DPC です。QR プロビジョニングが終わると、**端末標準ホーム（Samsung One UI 等）**のまま、許可リスト外について次を適用します。設定・Play・Chrome・LINE・アライブ・カメラは表示を維持します。
 
 - **許可リスト外**（ユーザー／システム／更新システム共通）: まず Device Owner として `PackageInstaller.uninstall` で**サイレントアンインストールを試行**（容量解放・「個人用に戻す」後も戻らない）
-- **フォールバック**: アンインストール失敗／システムスタブが残る場合のみ、起動可能なものに限り `setApplicationHidden(true)` で非表示
+- **FORCE_UNINSTALL**: Google スイート（非 Chrome）＋ Yahoo／Y!mobile／SoftBank／UQ／nubia／PayPay 等を明示＋ヒューリスティックで優先除去
+- **フォールバック**: アンインストール失敗／システムスタブが残る場合のみ `setApplicationHidden(true)` で非表示（「個人用に戻す」では許可リスト以外を再表示しない）
 
 - パッケージ名: `app.igni.dpc`
 - アプリ名: `イグニ`
@@ -66,7 +67,7 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
 - 許可リスト・DPC 自身・IME・SystemUI 等（`KeepPackages.shouldKeep` / CRITICAL）は絶対に消さない／隠さない（対象集合は従来の「隠していた集合」と同じ）
 - Google アプリ強制除去・TikTok Lite も同じ「アンインストール優先 → 非表示フォールバック」
 - アンインストールしたパッケージは `HiddenStore` から除去。非表示フォールバックのみ追跡
-- 「個人用に戻す」は隠したアプリを復元するが、**アンインストール済みは戻らない**（Play 等から再インストールが必要）
+- 「個人用に戻す」は **許可リスト／CRITICAL のみ**再表示（`unhideOnlyKeepPackages`）。FORCE_UNINSTALL／非 keep の非表示は戻さない。アンインストール済みも戻らない
 - ログ: `uninstallRequested`（試行数）と `hideFallback`（非表示フォールバック数）
 
 ## 表示ポリシー（v1.0.2+ / 強化 v1.0.3 / ダーク強化 v1.0.6）
@@ -100,6 +101,18 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
+
+## v1.0.32（FORCE_UNINSTALL 強化・個人用に戻すでブロート再表示しない）
+
+モーリー氏 Y!mobile nubia 報告: 「個人用に戻す」後に、非表示だけだった Google スイート／Yahoo／キャリア系がランチャーに戻る問題への対応。
+
+- **FORCE_UNINSTALL** セット拡充: Drive / Docs・Sheets・Slides / Maps / Photos / Gmail / YouTube・YT Music / Files by Google / Calendar / Keep / Meet / Podcasts / Wallet / Google TV / News / Duo(Tachyon) / Google Messages（他 SMS があるときのみ）など
+- **JP キャリア／Yahoo ヒューリスティック**: パッケージ名に `yahoo` / `ymobile` / `softbank` / `uqmobile` / `anshin` / `kisekae` / `sakusaku` / `paypay` / `oneseg` を含むもの＋明示定数（Y!メール・Y!ブラウザ・My Y!mobile・あんしんフィルター・データ移行・nubia/ZTE 系など）
+- **apply()**: FORCE_UNINSTALL も Google／TikTok と同様に **アンインストール優先 → 非表示／無効化フォールバック**（hide-only のまま放置しない）
+- **個人用に戻す**: DO 解除前に許可リスト外の最終アンインストールパス → **`unhideOnlyKeepPackages`**（許可リスト／CRITICAL のみ再表示）。強制削除対象の非表示は戻さない
+- CRITICAL に AOSP／Samsung SMS（`com.android.mms` / `messaging` 等）を追加。Google Messages は代替 SMS が無い場合は残す
+- 維持: Chrome 保護、TikTok Lite 強制削除、アライブ自動インストール、ダークモード、機内モード、ja_JP、Admin UI
+- versionCode **33** / versionName **1.0.32**
 
 ## v1.0.31（許可リスト外はアンインストール優先）
 

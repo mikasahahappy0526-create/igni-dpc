@@ -94,8 +94,11 @@ data class DarkModeStatus(
  * - Never claim HOME: clear this package's persistent preferred activities every apply
  *   so the stock Samsung / OEM launcher remains home (Igni HomeActivity is disabled).
  * - Keep Chrome / Settings / Play / Camera / LINE / Alive / Igni visible (explicit unhide+enable).
+ * - Force-remove Google suite + Yahoo/Y!mobile/SoftBank/UQ/nubia bloat (FORCE_UNINSTALL;
+ *   prefer uninstall then hide; never Chrome / keep-list).
  * - Force-remove Google app / search (prefer uninstall then hide; not Chrome).
  * - Force-remove TikTok Lite (prefer uninstall; hide if system/uninstall fails).
+ * - On「個人用に戻す」: final uninstall pass, then unhide **keep-list only** (never restore bloat).
  * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
  * - After policies: async silent install LINE / Chrome / Alive if missing (never Play).
  * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
@@ -290,6 +293,9 @@ class PolicyApplier(context: Context) {
         // Force-remove TikTok Lite (prefer silent uninstall; hide if system/uninstall fails).
         val tiktokRemoved = forceRemoveTikTokLite(hidden)
 
+        // Aggressive FORCE_UNINSTALL (Google suite + Yahoo/carrier/nubia) — uninstall first.
+        val forceUninst = forceUninstallAggressive(hidden)
+
         val installed = installedPackageNames()
         val launchable = launchablePackageNames()
 
@@ -297,6 +303,7 @@ class PolicyApplier(context: Context) {
         for (pkg in installed) {
             if (keep.isForceHide(pkg)) continue
             if (keep.isForceRemoveTikTokLite(pkg)) continue
+            if (keep.isForceUninstall(pkg)) continue
             if (keep.shouldKeep(pkg)) {
                 if (dpm.isApplicationHidden(admin, pkg)) {
                     val restored = runCatching { dpm.setApplicationHidden(admin, pkg, false) }.getOrDefault(false)
@@ -313,15 +320,9 @@ class PolicyApplier(context: Context) {
         var uninstallRequested = 0
         var hideFallback = 0
         for (pkg in installed) {
-            // Force-hide Google / force-remove TikTok handled above; still skip hard-deny / keep.
-            if (keep.isForceHide(pkg)) {
-                // Ensure still hidden if forceHideGoogleApps raced.
-                runCatching { dpm.setApplicationHidden(admin, pkg, true) }
-                if (hidden.add(pkg)) newlyHidden++
-                continue
-            }
-            if (keep.isForceRemoveTikTokLite(pkg)) {
-                // Prefer uninstall already requested; ensure hidden if still present (system stub).
+            // Force-hide Google / TikTok / FORCE_UNINSTALL handled above; still skip hard-deny / keep.
+            if (keep.isForceHide(pkg) || keep.isForceRemoveTikTokLite(pkg) || keep.isForceUninstall(pkg)) {
+                // Ensure still hidden if force-remove raced / stub remains.
                 runCatching { dpm.setApplicationHidden(admin, pkg, true) }
                 if (hidden.add(pkg)) newlyHidden++
                 continue
@@ -425,7 +426,7 @@ class PolicyApplier(context: Context) {
                 "timeoutMs=$timeoutMs dark=${dark.result} audio=${audio.result} " +
                 "ringer=${audio.ringerMode} music=${audio.musicVolume} ring=${audio.ringVolume} " +
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
-                "tiktokUninst=$tiktokRemoved " +
+                "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
@@ -450,7 +451,9 @@ class PolicyApplier(context: Context) {
 
     /**
      * Restore packages this DPC has **hidden** (hide-fallback stubs).
-     * Cannot restore packages that were uninstalled — those stay gone after「個人用に戻す」
+     * Admin「アプリ一覧を表示に戻す」uses this. Prefer [unhideOnlyKeepPackages] for
+     *「個人用に戻す」so force-removed bloat does not flood the launcher.
+     * Cannot restore packages that were uninstalled — those stay gone after DO clear
      * and must be reinstalled from Play / APK.
      */
     fun unhideAll(): Int {
@@ -469,9 +472,65 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Return to personal use: restore hidden system apps, clear DO-only policies,
+     * Unhide **keep-list / critical only**. Force-removed / non-keep packages that are
+     * still installed (hide fallback) stay hidden so「個人用に戻す」does not restore
+     * Google suite / Yahoo / carrier bloat visibility.
+     */
+    fun unhideOnlyKeepPackages(): Int {
+        if (!isDeviceOwner()) return 0
+        val hidden = store.snapshot()
+        var restored = 0
+        var skipped = 0
+        for (pkg in hidden) {
+            if (!keep.shouldKeep(pkg) || keep.isForceUninstall(pkg) ||
+                keep.isForceHide(pkg) || keep.isForceRemoveTikTokLite(pkg)
+            ) {
+                skipped++
+                Log.i(TAG, "Skip unhide non-keep/force-removed: $pkg")
+                continue
+            }
+            val ok = runCatching { dpm.setApplicationHidden(admin, pkg, false) }
+                .onFailure { Log.w(TAG, "Failed to unhide keep package $pkg", it) }
+                .getOrDefault(false)
+            if (ok) {
+                restored++
+                Log.i(TAG, "Unhid keep package $pkg")
+            }
+        }
+        // Drop tracking; non-keep stay hidden at PackageManager level.
+        store.replace(emptySet())
+        Log.i(TAG, "unhideOnlyKeepPackages restored=$restored skippedNonKeep=$skipped")
+        return restored
+    }
+
+    /**
+     * Last-chance silent uninstall of every non-keep package while still Device Owner.
+     * Called from [returnToPersonalUse] before clearDeviceOwner so bloat stays gone after unlock.
+     */
+    fun finalUninstallPassBeforeClearOwner(): Int {
+        if (!isDeviceOwner()) return 0
+        var requested = 0
+        for (pkg in installedPackageNames()) {
+            if (keep.isHardDenyUninstall(pkg)) continue
+            if (keep.shouldKeep(pkg)) continue
+            if (pkg == appContext.packageName) continue
+            if (keep.isTrichromePackage(pkg)) continue
+            if (pkg in KeepPackages.CHROME_PACKAGES) continue
+            val ok = requestSilentUninstall(pkg)
+            if (ok) {
+                requested++
+                Log.i(TAG, "Final uninstall before DO clear: $pkg")
+            }
+        }
+        Log.i(TAG, "finalUninstallPassBeforeClearOwner requested=$requested")
+        return requested
+    }
+
+    /**
+     * Return to personal use: final uninstall pass on non-keep, unhide **keep-list only**
+     * (never restore force-removed / Yahoo / Google suite bloat), clear DO-only policies,
      * then [DevicePolicyManager.clearDeviceOwnerApp] (deprecated self-clear API).
-     * Must run while still Device Owner for unhide / clear calls to succeed.
+     * Must run while still Device Owner for uninstall / unhide / clear calls to succeed.
      */
     @Suppress("DEPRECATION")
     fun returnToPersonalUse(): ClearOwnerResult {
@@ -483,7 +542,12 @@ class PolicyApplier(context: Context) {
             )
         }
 
-        val restored = unhideAll()
+        // Before losing DO: one more uninstall pass so hidden-only bloat is removed if possible.
+        val finalUninst = finalUninstallPassBeforeClearOwner()
+        Log.i(TAG, "returnToPersonalUse: finalUninstallPass=$finalUninst")
+
+        // Do NOT unhide force-removed / non-keep — only restore keep-list / critical.
+        val restored = unhideOnlyKeepPackages()
 
         runCatching {
             dpm.clearPackagePersistentPreferredActivities(admin, appContext.packageName)
@@ -505,6 +569,13 @@ class PolicyApplier(context: Context) {
         }.onFailure {
             Log.w(TAG, "setUninstallBlocked(false) failed", it)
         }
+        // Also clear uninstall-blocked on keep-list so user can manage them after unlock.
+        for (pkg in KeepPackages.HARD_DENY_UNINSTALL) {
+            runCatching { dpm.setUninstallBlocked(admin, pkg, false) }
+        }
+        for (pkg in KeepPackages.CHROME_PACKAGES) {
+            runCatching { dpm.setUninstallBlocked(admin, pkg, false) }
+        }
 
         return try {
             dpm.clearDeviceOwnerApp(appContext.packageName)
@@ -517,7 +588,10 @@ class PolicyApplier(context: Context) {
                     message = "still_device_owner"
                 )
             } else {
-                Log.i(TAG, "Device Owner cleared; restoredHidden=$restored")
+                Log.i(
+                    TAG,
+                    "Device Owner cleared; restoredKeepHidden=$restored finalUninst=$finalUninst"
+                )
                 ClearOwnerResult(
                     success = true,
                     restoredHidden = restored,
@@ -970,6 +1044,70 @@ class PolicyApplier(context: Context) {
             }
         }
         Log.i(TAG, "TikTok Lite force-remove: uninstallRequested=$uninstallRequested")
+        return uninstallRequested
+    }
+
+    /**
+     * Aggressive force-remove for [KeepPackages.FORCE_UNINSTALL] + heuristics
+     * (Google suite non-Chrome, Yahoo / Y!mobile / SoftBank / UQ / nubia / PayPay).
+     * Prefer silent uninstall; hide (+ disable) when system/uninstall fails or stub remains.
+     * Never touches Chrome / Play / Settings / LINE / Alive / CRITICAL.
+     *
+     * @return number of uninstall requests submitted
+     */
+    private fun forceUninstallAggressive(hidden: MutableSet<String>): Int {
+        var uninstallRequested = 0
+        val candidates = linkedSetOf<String>()
+        candidates.addAll(KeepPackages.FORCE_UNINSTALL)
+        for (pkg in installedPackageNames()) {
+            if (keep.isForceUninstall(pkg)) candidates.add(pkg)
+        }
+
+        for (pkg in candidates) {
+            if (!isPackageInstalled(pkg)) continue
+            if (!keep.isForceUninstall(pkg)) continue
+            // Skip if somehow protected (defense in depth).
+            if (keep.isProtectedKeepCore(pkg)) continue
+            if (keep.isHardDenyUninstall(pkg)) continue
+
+            runCatching { dpm.clearPackagePersistentPreferredActivities(admin, pkg) }
+
+            val requested = requestSilentUninstall(pkg)
+            if (requested) {
+                uninstallRequested++
+                hidden.remove(pkg)
+                Log.i(TAG, "FORCE_UNINSTALL requested: $pkg")
+            }
+
+            val system = isSystemOrUpdatedSystemApp(pkg)
+            // Always hide fallback for force-uninstall targets that remain (incl. after request),
+            // so「個人用に戻す」cannot restore them via unhide.
+            if (isPackageInstalled(pkg)) {
+                val hideOk = runCatching {
+                    dpm.setApplicationHidden(admin, pkg, true)
+                }.onFailure {
+                    Log.w(TAG, "Failed to hide FORCE_UNINSTALL package $pkg", it)
+                }.getOrDefault(false)
+                if (hideOk) {
+                    hidden.add(pkg)
+                    Log.i(
+                        TAG,
+                        "FORCE_UNINSTALL hidden (fallback): $pkg " +
+                            "(system=$system uninstallRequested=$requested)"
+                    )
+                }
+                runCatching {
+                    appContext.packageManager.setApplicationEnabledSetting(
+                        pkg,
+                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+                        0
+                    )
+                }.onFailure {
+                    Log.w(TAG, "Failed to disable FORCE_UNINSTALL package $pkg", it)
+                }
+            }
+        }
+        Log.i(TAG, "FORCE_UNINSTALL aggressive: uninstallRequested=$uninstallRequested")
         return uninstallRequested
     }
 

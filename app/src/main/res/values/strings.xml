@@ -4,11 +4,11 @@
     <string name="status_label">Device Owner 状態</string>
     <string name="status_device_owner">はい</string>
     <string name="status_not_device_owner">いいえ</string>
-    <string name="hint_owner">この端末はイグニの Device Owner です。ホームは端末標準（Samsung One UI など）のままです（カスタムHOMEなし）。許可リスト外のユーザーアプリはアンインストール（容量解放）、システムアプリの不要なものは非表示。設定・Play・Chrome・LINE・アライブ・カメラ・イグニは表示を維持。Googleアプリ（検索）は非表示／削除を試行し、Chromeをブラウザにします。システムUI・キーボードなど端末動作に必要なパッケージは対象外です。</string>
+    <string name="hint_owner">この端末はイグニの Device Owner です。ホームは端末標準（Samsung One UI など）のままです（カスタムHOMEなし）。許可リスト外はアンインストール優先（Googleスイート・Yahoo／Y!mobile／キャリア系を含む）。失敗時のみ非表示。設定・Play・Chrome・LINE・アライブ・カメラ・イグニは表示を維持。Chromeをブラウザにします。システムUI・電話／SMS・キーボードなど端末動作に必要なパッケージは対象外です。</string>
     <string name="hint_not_owner">Device Owner ではありません。工場出荷状態にリセットしたうえで、セットアップ画面でQRコードを読み取り、このアプリを端末管理者としてプロビジョニングしてください。</string>
     <string name="btn_reapply">ポリシーを再適用</string>
     <string name="btn_unhide">アプリ一覧を表示に戻す</string>
-    <string name="reapply_note">「ポリシーを再適用」は、許可リスト外の削除可能なユーザーアプリもアンインストールします（容量を解放）。ホームの再設定・ダークモード強化・マナー（サイレント）／音量0も再適用します。</string>
+    <string name="reapply_note">「ポリシーを再適用」は、許可リスト外（Googleスイート・Yahoo／Y!mobile／キャリア系を含む）をアンインストール優先で除去します（失敗時のみ非表示）。ホームの再設定・ダークモード強化・マナー（サイレント）／音量0も再適用します。</string>
     <string name="unhide_note">「アプリ一覧を表示に戻す」は、非表示にしたシステムアプリのみ再表示できます。すでにアンインストールしたユーザーアプリは復元できません（Playストア等から再インストールが必要です）。</string>
     <string name="allowlist_title">許可リスト（残す）</string>
     <string name="hidden_count">これまでに非表示にしたアプリ: %d 件</string>
@@ -89,12 +89,12 @@
     <string name="home_layout_note">ホーム1ページ目への自動固定は OEM により確認が必要で、Device Owner でもサイレント保証はありません。設定・Play・Chrome・LINE・アライブ・カメラ・イグニは許可リストで表示されます。カスタムHOME／ドックは使いません。</string>
 
     <string name="btn_return_personal">個人用に戻す（Device Owner解除）</string>
-    <string name="return_personal_note">「個人用に戻す」は Device Owner を解除し、イグニを通常アプリにします。非表示にしたシステムアプリは再表示されますが、アンインストール済みのユーザーアプリは戻りません。ポリシー（非表示・アンインストール・ダーク／音量等）は以降適用されません。</string>
+    <string name="return_personal_note">「個人用に戻す」は Device Owner を解除し、イグニを通常アプリにします。解除前に許可リスト外の再アンインストールを試し、許可リスト／必須アプリのみ再表示します（Google／Yahoo／キャリア等の強制削除対象は再表示しません）。アンインストール済みは戻りません。ポリシーは以降適用されません。</string>
     <string name="return_personal_confirm_title">個人用に戻しますか？</string>
-    <string name="return_personal_confirm_message">Device Owner（完全管理）を解除します。\n\n・非表示にしたシステムアプリは再表示されます\n・すでにアンインストールしたアプリは戻りません（Play等から再インストールが必要）\n・イグニは通常のアプリになり、ポリシーは以降適用されません\n\nこの操作は取り消せません。よろしいですか？</string>
+    <string name="return_personal_confirm_message">Device Owner（完全管理）を解除します。\n\n・許可リスト／必須アプリのみ再表示します\n・Google／Yahoo／キャリア等の強制削除対象は再表示しません\n・すでにアンインストールしたアプリは戻りません（Play等から再インストールが必要）\n・イグニは通常のアプリになり、ポリシーは以降適用されません\n\nこの操作は取り消せません。よろしいですか？</string>
     <string name="return_personal_confirm_ok">解除する</string>
     <string name="return_personal_confirm_cancel">キャンセル</string>
-    <string name="toast_return_personal_success">Device Owner を解除しました（非表示 %d 件を再表示）。イグニは通常アプリです。</string>
+    <string name="toast_return_personal_success">Device Owner を解除しました（許可リスト %d 件を再表示。強制削除対象は戻しません）。イグニは通常アプリです。</string>
     <string name="toast_return_personal_not_owner">Device Owner ではないため解除できません</string>
     <string name="toast_return_personal_failed">Device Owner の解除に失敗しました: %1$s</string>
     <string name="return_personal_status_success">個人用に戻す: 成功（Device Owner = いいえ）</string>
