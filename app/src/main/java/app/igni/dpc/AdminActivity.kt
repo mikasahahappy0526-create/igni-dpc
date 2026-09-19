@@ -7,7 +7,6 @@ import androidx.core.view.isVisible
 import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.databinding.ActivityAdminBinding
-import app.igni.dpc.line.LineAccountClearer
 import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.GoogleAppStatus
@@ -46,7 +45,6 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallLine.setOnClickListener { installLine() }
         binding.btnInstallLinePlay.setOnClickListener { installLineViaPlay() }
-        binding.btnClearLineAccount.setOnClickListener { confirmClearLineAccount() }
         binding.btnInstallAlive.setOnClickListener { installAlive() }
         binding.btnOpenAlive.setOnClickListener { openAlive() }
 
@@ -125,7 +123,6 @@ class AdminActivity : AppCompatActivity() {
         binding.lineDisclaimer.isVisible = false
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
-        binding.btnClearLineAccount.isEnabled = !busy && !updateBusy.get()
         binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
@@ -337,27 +334,6 @@ class AdminActivity : AppCompatActivity() {
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
     }
 
-    private fun confirmClearLineAccount() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.clear_line_confirm_title)
-            .setMessage(R.string.clear_line_confirm_message)
-            .setPositiveButton(R.string.clear_line_confirm_ok) { _, _ -> clearLineAccount() }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
-    private fun clearLineAccount() {
-        Toast.makeText(this, R.string.toast_clear_line_started, Toast.LENGTH_SHORT).show()
-        binding.lineInstallStatus.text = getString(R.string.clear_line_status_working)
-        executor.execute {
-            val result = LineAccountClearer.clearLineLocalAccount(this)
-            runOnUiThread {
-                binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
-                Toast.makeText(this, result.messageJa, Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
     private fun installAlive() {
         // Button-triggered only: GitHub APK install (silent when DO; confirm when personal).
         if (AliveInstaller.isAliveInstalled(this)) {
@@ -449,7 +425,6 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
-        binding.btnClearLineAccount.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
     }

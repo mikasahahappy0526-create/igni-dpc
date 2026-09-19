@@ -195,21 +195,6 @@
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnClearLineAccount"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="8dp"
-            android:text="@string/btn_clear_line_account"
-            android:textColor="@color/igni_text"
-            android:textSize="15sp"
-            app:cornerRadius="14dp"
-            app:strokeColor="@color/igni_outline" />
-
-
-
         <TextView
             android:id="@+id/lineDisclaimer"
             android:layout_width="match_parent"
