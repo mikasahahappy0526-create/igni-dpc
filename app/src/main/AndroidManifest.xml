@@ -7,14 +7,12 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Personal-mode APK install (PackageInstaller / ACTION_VIEW). DO silent path does not need user grant. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Helps Settings.System.putInt(SCREEN_OFF_TIMEOUT); DO may also write without it. -->
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
-        tools:ignore="ProtectedPermissions" />
-    <!-- Global settings (airplane mode) via Settings.Global.putInt fallback; DO prefers DPM.setGlobalSetting. -->
-    <uses-permission
-        android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
     <!-- Silent / manner + setStreamVolume(0) on policy apply. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -189,5 +187,15 @@
                 <action android:name="app.igni.dpc.action.ALIVE_INSTALL_STATUS" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

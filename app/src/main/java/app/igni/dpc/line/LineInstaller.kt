@@ -1,14 +1,12 @@
 package app.igni.dpc.line
 
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageInstaller
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.util.Log
 import app.igni.dpc.LineInstallStatusReceiver
+import app.igni.dpc.install.InstallSupport
 import app.igni.dpc.policy.KeepPackages
 import java.io.File
 import java.io.FileInputStream
@@ -20,15 +18,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.ZipFile
 
 /**
- * Ensures LINE ([KeepPackages.LINE_PACKAGE]) is installed after Device Owner policy apply.
+ * Ensures LINE ([KeepPackages.LINE_PACKAGE]) is installed.
  *
- * 1. If already installed → skip.
- * 2. Download fixed XAPK from GitHub Releases (HTTPS, follow redirects).
- * 3. Unpack XAPK / install all .apk splits in one PackageInstaller session; OBB best-effort.
- * 4. On hard failure → log + status prefs only (never open Play from auto path).
- *    Admin UI may call [openPlayStore] explicitly.
+ * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
+ * - Personal mode (Admin button): download then PackageInstaller with user confirm
+ *   (or ACTION_VIEW / FileProvider for a single APK).
  *
- * Fire-and-forget; never blocks [app.igni.dpc.policy.PolicyApplier.apply].
+ * Fire-and-forget async helper never blocks [app.igni.dpc.policy.PolicyApplier.apply].
  */
 object LineInstaller {
 
@@ -42,7 +38,7 @@ object LineInstaller {
     const val XAPK_URL =
         "https://github.com/mikasahahappy0526-create/i/releases/download/line/line.xapk"
 
-    private const val USER_AGENT = "Igni-DPC-Line/1.0.35 (Android; DeviceOwner)"
+    private const val USER_AGENT = "Igni-DPC-Line/1.0.37 (Android)"
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -55,6 +51,11 @@ object LineInstaller {
     /** Kick off install attempt on a background thread (returns immediately). */
     fun ensureLineInstalledAsync(context: Context) {
         val app = context.applicationContext
+        // Auto path is DO-only (PolicyApplier already gates; belt-and-suspenders).
+        if (!InstallSupport.isDeviceOwner(app)) {
+            Log.i(TAG, "Skip auto LINE install — not Device Owner")
+            return
+        }
         executor.execute {
             runCatching { ensureLineInstalled(app) }
                 .onFailure { Log.w(TAG, "ensureLineInstalled crashed", it) }
@@ -63,7 +64,7 @@ object LineInstaller {
 
     /**
      * Synchronous attempt (call from a worker thread). Safe to call from Admin UI button.
-     * Skips overlapping runs. Direct GitHub XAPK + PackageInstaller — never opens Play.
+     * Skips overlapping runs. Works in DO (silent) and personal mode (user confirm).
      */
     fun ensureLineInstalled(context: Context) {
         val app = context.applicationContext
@@ -82,34 +83,57 @@ object LineInstaller {
                 return
             }
 
+            val isDo = InstallSupport.isDeviceOwner(app)
+            if (!isDo && !InstallSupport.ensureCanRequestInstall(app)) {
+                persist(app, "need_permission", "個人用モード: 「提供元不明のアプリ」を許可してください")
+                return
+            }
+
             persist(app, "downloading", "GitHub から XAPK をダウンロード中…")
             val dest = File(workDir, "line.xapk")
             val downloaded = downloadXapk(dest)
             if (downloaded.isFailure) {
                 val err = downloaded.exceptionOrNull()?.message ?: "download failed"
-                Log.w(TAG, "LINE download failed: $err — silent path stops (no Play)")
+                Log.w(TAG, "LINE download failed: $err")
                 persist(app, "silent_failed", "DL失敗 ($err)")
                 return
             }
 
-            persist(app, "installing", "PackageInstaller でインストール中…")
+            if (isDo) {
+                persist(app, "installing", "PackageInstaller でインストール中…")
+            } else {
+                persist(app, "installing", "個人用モードでインストール確認が必要")
+            }
+
             val installed = when {
                 looksLikeZip(dest) -> installFromXapk(app, dest, workDir)
                 else -> installApks(app, listOf(dest))
             }
             if (installed.isFailure) {
                 val err = installed.exceptionOrNull()?.message ?: "install failed"
-                Log.w(TAG, "LINE silent install failed: $err — silent path stops (no Play)")
-                persist(app, "silent_failed", "サイレント失敗 ($err)")
+                Log.w(TAG, "LINE install failed: $err")
+                // Personal single-APK fallback via FileProvider if session failed.
+                if (!isDo && !looksLikeZip(dest)) {
+                    val view = InstallSupport.installViaViewIntent(app, dest)
+                    if (view.isSuccess) {
+                        persist(app, "installing", "個人用モードでインストール確認が必要")
+                        return
+                    }
+                }
+                persist(app, "silent_failed", if (isDo) "サイレント失敗 ($err)" else "インストール失敗 ($err)")
                 return
             }
-            // Session committed; final success/failure arrives via LineInstallStatusReceiver.
             if (isLineInstalled(app)) {
                 persist(app, "success", "インストール確認済み")
             } else {
-                persist(app, "installing", "インストール要求を送信済み（結果はログ）")
+                persist(
+                    app,
+                    "installing",
+                    if (isDo) "インストール要求を送信済み（結果はログ）"
+                    else "個人用モードでインストール確認が必要"
+                )
             }
-            Log.i(TAG, "LINE PackageInstaller session committed (fire-and-forget)")
+            Log.i(TAG, "LINE PackageInstaller session committed (do=$isDo)")
         } finally {
             busy.set(false)
         }
@@ -133,18 +157,26 @@ object LineInstaller {
             "already_installed", "success", "browser_preferred" -> "インストール済み"
             "missing" -> "未インストール"
             "resolving", "downloading" -> "ダウンロード中"
-            "installing" -> "インストール中"
+            "installing" -> {
+                if (InstallSupport.isDeviceOwner(context)) "インストール中"
+                else "確認待ち（個人用）"
+            }
+            "need_permission" -> "許可が必要（個人用）"
             "failure", "silent_failed" -> "失敗"
             else -> if (isLineInstalled(context)) "インストール済み" else "未インストール"
         }
     }
 
     fun persistSuccess(context: Context) {
-        persist(context, "success", "サイレントインストール成功")
+        persist(context, "success", "インストール成功")
     }
 
     fun persistFailure(context: Context, message: String?) {
         persist(context, "failure", message ?: "install failure")
+    }
+
+    fun persistInstallingUserConfirm(context: Context) {
+        persist(context, "installing", "個人用モードでインストール確認が必要")
     }
 
     private fun persist(context: Context, status: String, detail: String) {
@@ -280,50 +312,14 @@ object LineInstaller {
     }
 
     private fun installApks(context: Context, apkFiles: List<File>): Result<Unit> {
-        return runCatching {
-            require(apkFiles.isNotEmpty()) { "APK がありません" }
-            for (f in apkFiles) {
-                require(f.exists() && f.length() > 0L) { "空の APK: ${f.name}" }
-            }
-            val installer = context.packageManager.packageInstaller
-            val params = PackageInstaller.SessionParams(
-                PackageInstaller.SessionParams.MODE_FULL_INSTALL
-            ).apply {
-                setAppPackageName(KeepPackages.LINE_PACKAGE)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-                }
-            }
-            val sessionId = installer.createSession(params)
-            installer.openSession(sessionId).use { session ->
-                apkFiles.forEachIndexed { index, apk ->
-                    val splitName = if (apkFiles.size == 1) "line.apk" else "line-$index-${apk.name}"
-                    apk.inputStream().use { input ->
-                        session.openWrite(splitName, 0, apk.length()).use { out ->
-                            input.copyTo(out)
-                            session.fsync(out)
-                        }
-                    }
-                }
-                val statusIntent = Intent(LineInstallStatusReceiver.ACTION).apply {
-                    setPackage(context.packageName)
-                }
-                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        PendingIntent.FLAG_MUTABLE
-                    } else {
-                        0
-                    }
-                val pending = PendingIntent.getBroadcast(
-                    context,
-                    sessionId,
-                    statusIntent,
-                    flags
-                )
-                session.commit(pending.intentSender)
-            }
-            Log.i(TAG, "PackageInstaller session $sessionId committed (${apkFiles.size} APKs)")
-        }
+        return InstallSupport.commitApkSession(
+            context = context,
+            apkFiles = apkFiles,
+            packageName = KeepPackages.LINE_PACKAGE,
+            splitNamePrefix = "line",
+            statusAction = LineInstallStatusReceiver.ACTION,
+            statusRequestCode = 0x4C49 // 'LI'
+        )
     }
 
     /**

@@ -102,6 +102,14 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.37（個人用モードで LINE／アライブ継続・機内モード削除・LINEアカウント外し）
+
+- **個人用モード（Device Owner 解除後）**: Admin の LINE／アライブ インストールが通常アプリとして動作。DO 時は従来どおりサイレント `PackageInstaller`。非 DO 時はダウンロード後にユーザー確認付きセッション（または単一 APK の `FileProvider` + `ACTION_VIEW`）。`REQUEST_INSTALL_PACKAGES` ＋必要時に提供元不明の許可画面
+- **自動インストール**: `PolicyApplier.apply()` からの LINE／アライブ自動導入は **DO のみ**（従来どおり）
+- **機内モード削除**: Admin スイッチ・`AirplaneModeHelper`・関連文字列／`WRITE_SECURE_SETTINGS`（機内専用）を削除
+- **LINEアカウントを外す**: 端末上のログイン情報のみ消去（サーバーの LINE アカウントは消さない）。DO は `DPM.clearApplicationUserData`、個人用はアプリ情報画面で「ストレージとキャッシュを消去」を案内
+- **個人用に戻す後**: Admin は起動可能なまま。LINE／アライブ／アカウント外しを継続利用可能とヒント／確認文を更新
+
 ## v1.0.36（充電情報を表示 OFF）
 
 モーリー氏報告: Galaxy A23 / Sense 系でロック画面の「充電情報を表示」（充電中の残量％・満充電までの時間）をセットアップ時にオフにしたい。

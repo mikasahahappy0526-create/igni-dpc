@@ -4,13 +4,13 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import app.igni.dpc.alive.AliveInstaller
+import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.databinding.ActivityAdminBinding
+import app.igni.dpc.line.LineAccountClearer
+import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.AudioStatus
 import app.igni.dpc.policy.GoogleAppStatus
-import app.igni.dpc.alive.AliveInstaller
-import app.igni.dpc.airplane.AirplaneModeHelper
-import app.igni.dpc.chrome.ChromeInstaller
-import app.igni.dpc.line.LineInstaller
 import app.igni.dpc.policy.PolicyApplier
 import app.igni.dpc.update.AppSelfUpdater
 import app.igni.dpc.update.AppUpdateChecker
@@ -46,11 +46,9 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.setOnClickListener { checkUpdate() }
         binding.btnInstallLine.setOnClickListener { installLine() }
         binding.btnInstallLinePlay.setOnClickListener { installLineViaPlay() }
+        binding.btnClearLineAccount.setOnClickListener { confirmClearLineAccount() }
         binding.btnInstallAlive.setOnClickListener { installAlive() }
         binding.btnOpenAlive.setOnClickListener { openAlive() }
-        binding.switchAirplaneMode.setOnCheckedChangeListener { _, isChecked ->
-            onAirplaneSwitchChanged(isChecked)
-        }
 
         maybeReapplyAfterVersionChange()
 
@@ -127,10 +125,10 @@ class AdminActivity : AppCompatActivity() {
         binding.lineDisclaimer.isVisible = false
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
+        binding.btnClearLineAccount.isEnabled = !busy && !updateBusy.get()
         binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
-        refreshAirplaneSwitch(isOwner = isOwner, busy = busy)
         updateGoogleLabel(applier.googleAppStatus())
         val chromeOk = ChromeInstaller.isChromeInstalled(this)
         binding.chromeBrowserStatus.text = getString(
@@ -180,7 +178,6 @@ class AdminActivity : AppCompatActivity() {
             )
         }
     }
-
 
     private fun reapply() {
         setBusy(true)
@@ -340,8 +337,29 @@ class AdminActivity : AppCompatActivity() {
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
     }
 
+    private fun confirmClearLineAccount() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.clear_line_confirm_title)
+            .setMessage(R.string.clear_line_confirm_message)
+            .setPositiveButton(R.string.clear_line_confirm_ok) { _, _ -> clearLineAccount() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun clearLineAccount() {
+        Toast.makeText(this, R.string.toast_clear_line_started, Toast.LENGTH_SHORT).show()
+        binding.lineInstallStatus.text = getString(R.string.clear_line_status_working)
+        executor.execute {
+            val result = LineAccountClearer.clearLineLocalAccount(this)
+            runOnUiThread {
+                binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
+                Toast.makeText(this, result.messageJa, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     private fun installAlive() {
-        // Button-triggered only: GitHub APK silent install (no Play).
+        // Button-triggered only: GitHub APK install (silent when DO; confirm when personal).
         if (AliveInstaller.isAliveInstalled(this)) {
             binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
             Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
@@ -431,74 +449,10 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
+        binding.btnClearLineAccount.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
         binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
-        binding.switchAirplaneMode.isEnabled = owner && !busy
     }
-
-    private var airplaneSwitchProgrammatic = false
-
-    private var airplaneBusy = false
-
-    private fun refreshAirplaneSwitch(isOwner: Boolean, busy: Boolean) {
-        // Do not fight an in-flight toggle; onResume will refresh after it finishes.
-        if (airplaneBusy) {
-            binding.switchAirplaneMode.isEnabled = false
-            return
-        }
-        val on = AirplaneModeHelper.isAirplaneModeOn(this)
-        airplaneSwitchProgrammatic = true
-        binding.switchAirplaneMode.isChecked = on
-        airplaneSwitchProgrammatic = false
-        binding.switchAirplaneMode.isEnabled = isOwner && !busy
-        if (binding.airplaneModeStatus.text.isNullOrBlank()) {
-            binding.airplaneModeStatus.text = if (on) "機内モード: オン" else "機内モード: オフ"
-        }
-    }
-
-    private fun onAirplaneSwitchChanged(wantOn: Boolean) {
-        if (airplaneSwitchProgrammatic) return
-        val applier = PolicyApplier(this)
-        if (!applier.isDeviceOwner()) {
-            airplaneSwitchProgrammatic = true
-            binding.switchAirplaneMode.isChecked = AirplaneModeHelper.isAirplaneModeOn(this)
-            airplaneSwitchProgrammatic = false
-            binding.airplaneModeStatus.text = "DOではない"
-            Toast.makeText(this, R.string.toast_airplane_not_owner, Toast.LENGTH_SHORT).show()
-            return
-        }
-        airplaneBusy = true
-        binding.switchAirplaneMode.isEnabled = false
-        binding.airplaneModeStatus.text = "切替中…"
-        executor.execute {
-            val result = AirplaneModeHelper.setAirplaneMode(this, wantOn)
-            runOnUiThread {
-                airplaneBusy = false
-                airplaneSwitchProgrammatic = true
-                binding.switchAirplaneMode.isChecked = result.enabled
-                airplaneSwitchProgrammatic = false
-                binding.switchAirplaneMode.isEnabled = PolicyApplier(this).isDeviceOwner()
-                binding.airplaneModeStatus.text = result.statusLineJa.ifBlank {
-                    if (result.success) {
-                        if (result.enabled) "機内モード: オン" else "機内モード: オフ"
-                    } else {
-                        "切替失敗"
-                    }
-                }
-                if (result.openSettings) {
-                    AirplaneModeHelper.openAirplaneSettings(this)
-                }
-                val msg = when {
-                    result.success && result.enabled -> getString(R.string.toast_airplane_on)
-                    result.success && !result.enabled -> getString(R.string.toast_airplane_off)
-                    result.openSettings -> getString(R.string.toast_airplane_open_settings)
-                    else -> result.messageJa.ifBlank { getString(R.string.toast_airplane_failed) }
-                }
-                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
 
     companion object {
         private const val PREFS_UPDATE = "igni_update"

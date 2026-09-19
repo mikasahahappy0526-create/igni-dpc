@@ -1,12 +1,10 @@
 package app.igni.dpc.alive
 
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageInstaller
-import android.os.Build
 import android.util.Log
 import app.igni.dpc.AliveInstallStatusReceiver
+import app.igni.dpc.install.InstallSupport
 import app.igni.dpc.policy.KeepPackages
 import java.io.File
 import java.io.FileOutputStream
@@ -18,10 +16,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Installs アライブ ([KeepPackages.ALIVE_PACKAGE]) from a fixed GitHub Releases APK URL.
  *
- * Simpler than LINE/Chrome: no Uptodown — direct APK download + PackageInstaller.
- * Called from [app.igni.dpc.policy.PolicyApplier.apply] (auto on home / after setup)
- * and from Admin「アライブ」for manual retry.
- * On failure: status text only — never open Play.
+ * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
+ * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
  */
 object AliveInstaller {
 
@@ -39,7 +35,7 @@ object AliveInstaller {
     const val APK_URL_FALLBACK =
         "https://github.com/mikasahahappy0526-create/puchicli/releases/download/latest-apk/puchicli.apk"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.20 (Android; DeviceOwner)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.37 (Android)"
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -48,6 +44,10 @@ object AliveInstaller {
     /** Kick off install on a background thread (returns immediately). */
     fun ensureAliveInstalledAsync(context: Context) {
         val app = context.applicationContext
+        if (!InstallSupport.isDeviceOwner(app)) {
+            Log.i(TAG, "Skip auto Alive install — not Device Owner")
+            return
+        }
         executor.execute {
             runCatching { ensureAliveInstalled(app) }
                 .onFailure { Log.w(TAG, "ensureAliveInstalled crashed", it) }
@@ -56,8 +56,7 @@ object AliveInstaller {
 
     /**
      * Synchronous attempt (worker thread). Safe for Admin「アライブを入れる」.
-     * Skips overlapping runs. Direct GitHub APK + PackageInstaller — never opens Play.
-     * If already installed, updates status and returns (caller may open the app).
+     * Skips overlapping runs. Works in DO (silent) and personal mode (user confirm).
      */
     fun ensureAliveInstalled(context: Context) {
         val app = context.applicationContext
@@ -76,30 +75,53 @@ object AliveInstaller {
                 return
             }
 
+            val isDo = InstallSupport.isDeviceOwner(app)
+            if (!isDo && !InstallSupport.ensureCanRequestInstall(app)) {
+                persist(app, "need_permission", "個人用モード: 「提供元不明のアプリ」を許可してください")
+                return
+            }
+
             persist(app, "downloading", "GitHub から APK をダウンロード中…")
             val dest = File(workDir, "puchicli.apk")
             val downloaded = downloadApk(dest)
             if (downloaded.isFailure) {
                 val err = downloaded.exceptionOrNull()?.message ?: "download failed"
-                Log.w(TAG, "Alive download failed: $err — silent path stops (no Play)")
+                Log.w(TAG, "Alive download failed: $err")
                 persist(app, "silent_failed", "DL失敗 ($err)")
                 return
             }
 
-            persist(app, "installing", "PackageInstaller でインストール中…")
+            if (isDo) {
+                persist(app, "installing", "PackageInstaller でインストール中…")
+            } else {
+                persist(app, "installing", "個人用モードでインストール確認が必要")
+            }
+
             val installed = installApk(app, dest)
             if (installed.isFailure) {
                 val err = installed.exceptionOrNull()?.message ?: "install failed"
-                Log.w(TAG, "Alive silent install failed: $err — silent path stops (no Play)")
-                persist(app, "silent_failed", "サイレント失敗 ($err)")
+                Log.w(TAG, "Alive PackageInstaller failed: $err")
+                if (!isDo) {
+                    val view = InstallSupport.installViaViewIntent(app, dest)
+                    if (view.isSuccess) {
+                        persist(app, "installing", "個人用モードでインストール確認が必要")
+                        return
+                    }
+                }
+                persist(app, "silent_failed", if (isDo) "サイレント失敗 ($err)" else "インストール失敗 ($err)")
                 return
             }
             if (isAliveInstalled(app)) {
                 persist(app, "success", "インストール確認済み")
             } else {
-                persist(app, "installing", "インストール要求を送信済み（結果はログ）")
+                persist(
+                    app,
+                    "installing",
+                    if (isDo) "インストール要求を送信済み（結果はログ）"
+                    else "個人用モードでインストール確認が必要"
+                )
             }
-            Log.i(TAG, "Alive PackageInstaller session committed (fire-and-forget)")
+            Log.i(TAG, "Alive PackageInstaller session committed (do=$isDo)")
         } finally {
             busy.set(false)
         }
@@ -128,7 +150,6 @@ object AliveInstaller {
         }.getOrDefault(false)
     }
 
-
     /** Short Japanese-only status for Admin UI (no English keys / long tails). */
     fun lastStatusText(context: Context): String {
         val prefs = prefs(context)
@@ -140,18 +161,26 @@ object AliveInstaller {
             "already_installed", "success", "browser_preferred" -> "インストール済み"
             "missing" -> "未インストール"
             "resolving", "downloading" -> "ダウンロード中"
-            "installing" -> "インストール中"
+            "installing" -> {
+                if (InstallSupport.isDeviceOwner(context)) "インストール中"
+                else "確認待ち（個人用）"
+            }
+            "need_permission" -> "許可が必要（個人用）"
             "failure", "silent_failed" -> "失敗"
             else -> if (isAliveInstalled(context)) "インストール済み" else "未インストール"
         }
     }
 
     fun persistSuccess(context: Context) {
-        persist(context, "success", "サイレントインストール成功")
+        persist(context, "success", "インストール成功")
     }
 
     fun persistFailure(context: Context, message: String?) {
         persist(context, "failure", message ?: "install failure")
+    }
+
+    fun persistInstallingUserConfirm(context: Context) {
+        persist(context, "installing", "個人用モードでインストール確認が必要")
     }
 
     private fun persist(context: Context, status: String, detail: String) {
@@ -225,42 +254,14 @@ object AliveInstaller {
         }
     }
 
-    private fun installApk(context: Context, apk: File): Result<Unit> = runCatching {
-        require(apk.exists() && apk.length() > 0L) { "空の APK: ${apk.name}" }
-        val installer = context.packageManager.packageInstaller
-        val params = PackageInstaller.SessionParams(
-            PackageInstaller.SessionParams.MODE_FULL_INSTALL
-        ).apply {
-            setAppPackageName(KeepPackages.ALIVE_PACKAGE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
-            }
-        }
-        val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            apk.inputStream().use { input ->
-                session.openWrite("alive.apk", 0, apk.length()).use { out ->
-                    input.copyTo(out)
-                    session.fsync(out)
-                }
-            }
-            val statusIntent = Intent(AliveInstallStatusReceiver.ACTION).apply {
-                setPackage(context.packageName)
-            }
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    PendingIntent.FLAG_MUTABLE
-                } else {
-                    0
-                }
-            val pending = PendingIntent.getBroadcast(
-                context,
-                sessionId,
-                statusIntent,
-                flags
-            )
-            session.commit(pending.intentSender)
-        }
-        Log.i(TAG, "PackageInstaller session $sessionId committed for Alive")
+    private fun installApk(context: Context, apk: File): Result<Unit> {
+        return InstallSupport.commitApkSession(
+            context = context,
+            apkFiles = listOf(apk),
+            packageName = KeepPackages.ALIVE_PACKAGE,
+            splitNamePrefix = "alive",
+            statusAction = AliveInstallStatusReceiver.ACTION,
+            statusRequestCode = 0x414C // 'AL'
+        )
     }
 }

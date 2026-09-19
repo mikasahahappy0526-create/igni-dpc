@@ -5,7 +5,7 @@
     <string name="status_device_owner">はい</string>
     <string name="status_not_device_owner">いいえ</string>
     <string name="hint_owner">この端末はイグニの Device Owner です。ホームは端末標準（Samsung One UI など）のままです（カスタムHOMEなし）。許可リスト外はアンインストール優先（Googleスイート・Yahoo／Y!mobile／キャリア系を含む）。失敗時のみ非表示。設定・Play・Chrome・LINE・アライブ・カメラ・イグニは表示を維持。Chromeをブラウザにします。システムUI・電話／SMS・キーボードなど端末動作に必要なパッケージは対象外です。</string>
-    <string name="hint_not_owner">Device Owner ではありません。工場出荷状態にリセットしたうえで、セットアップ画面でQRコードを読み取り、このアプリを端末管理者としてプロビジョニングしてください。</string>
+    <string name="hint_not_owner">Device Owner ではありません（個人用モード）。ポリシー適用はできませんが、LINE／アライブのインストールと「LINEアカウントを外す」は使えます。完全管理に戻す場合は工場出荷リセット後に QR でプロビジョニングしてください。</string>
     <string name="btn_reapply">ポリシーを再適用</string>
     <string name="btn_unhide">アプリ一覧を表示に戻す</string>
     <string name="reapply_note">「ポリシーを再適用」は、許可リスト外（Googleスイート・Yahoo／Y!mobile／キャリア系を含む）をアンインストール優先で除去します（失敗時のみ非表示）。ホームの再設定・マナー（サイレント）／音量0も再適用します。</string>
@@ -48,7 +48,7 @@
     <string name="btn_install_line">LINE</string>
     <string name="btn_install_line_play">Play</string>
     <string name="line_status_idle">未インストール</string>
-    <string name="line_install_note">ポリシー適用後、LINE 未インストールなら GitHub の XAPK を取得してサイレントインストールします。失敗時はログとステータスのみ（自動では Play を開きません）。管理画面の「Playで入れる」から明示的に開けます。</string>
+    <string name="line_install_note">Device Owner 時はポリシー適用後に GitHub XAPK をサイレントインストール。個人用モードでは管理画面ボタンからダウンロードし、インストール確認（または提供元不明の許可）が必要です。自動では Play を開きません。</string>
     <string name="toast_line_install_started">LINE インストールを開始しました</string>
     <string name="toast_line_play_opened">Play ストアで LINE を開きました</string>
     <string name="line_disclaimer">GitHub Releases 配布（ミラー）・Play より非公式</string>
@@ -72,7 +72,7 @@
     <string name="btn_install_alive">アライブ</string>
     <string name="btn_open_alive">開く</string>
     <string name="alive_status_idle">未インストール</string>
-    <string name="alive_install_note">ホーム到達／ポリシー適用後に自動インストールを試行します。失敗時は管理画面のボタンで再試行できます。GitHub の最新 APK を取得して Device Owner としてサイレントインストールします。失敗時はステータス表示のみ（Play は開きません）。インストール済みなら「アライブを開く」で起動できます。</string>
+    <string name="alive_install_note">Device Owner 時はポリシー適用後に GitHub APK をサイレントインストール。個人用モードでは管理画面ボタンから確認付きインストール。失敗時はステータスのみ（Play は開きません）。</string>
     <string name="toast_alive_install_started">アライブ インストールを開始しました</string>
     <string name="toast_alive_opened">アライブを開きました</string>
     <string name="toast_alive_not_installed">アライブはまだインストールされていません</string>
@@ -84,23 +84,22 @@
     <string name="home_layout_note">ホーム1ページ目への自動固定は OEM により確認が必要で、Device Owner でもサイレント保証はありません。設定・Play・Chrome・LINE・アライブ・カメラ・イグニは許可リストで表示されます。カスタムHOME／ドックは使いません。</string>
 
     <string name="btn_return_personal">個人用に戻す（Device Owner解除）</string>
-    <string name="return_personal_note">「個人用に戻す」は Device Owner を解除し、イグニを通常アプリにします。解除前に許可リスト外の再アンインストールを試し、許可リスト／必須アプリのみ再表示します（Google／Yahoo／キャリア等の強制削除対象は再表示しません）。アンインストール済みは戻りません。ポリシーは以降適用されません。</string>
+    <string name="return_personal_note">「個人用に戻す」は Device Owner を解除し、イグニを通常アプリにします。解除前に許可リスト外の再アンインストールを試し、許可リスト／必須アプリのみ再表示します（Google／Yahoo／キャリア等の強制削除対象は再表示しません）。アンインストール済みは戻りません。ポリシーは以降適用されませんが、LINE／アライブのインストールと「LINEアカウントを外す」は個人用モードでも使えます。</string>
     <string name="return_personal_confirm_title">個人用に戻しますか？</string>
-    <string name="return_personal_confirm_message">Device Owner（完全管理）を解除します。\n\n・許可リスト／必須アプリのみ再表示します\n・Google／Yahoo／キャリア等の強制削除対象は再表示しません\n・すでにアンインストールしたアプリは戻りません（Play等から再インストールが必要）\n・イグニは通常のアプリになり、ポリシーは以降適用されません\n\nこの操作は取り消せません。よろしいですか？</string>
+    <string name="return_personal_confirm_message">Device Owner（完全管理）を解除します。\n\n・許可リスト／必須アプリのみ再表示します\n・Google／Yahoo／キャリア等の強制削除対象は再表示しません\n・すでにアンインストールしたアプリは戻りません（Play等から再インストールが必要）\n・イグニは通常アプリになりますが、LINE／アライブのインストールと「LINEアカウントを外す」は引き続き使えます\n・ポリシーは以降適用されません\n\nこの操作は取り消せません。よろしいですか？</string>
     <string name="return_personal_confirm_ok">解除する</string>
     <string name="return_personal_confirm_cancel">キャンセル</string>
-    <string name="toast_return_personal_success">Device Owner を解除しました（許可リスト %d 件を再表示。強制削除対象は戻しません）。イグニは通常アプリです。</string>
+    <string name="toast_return_personal_success">Device Owner を解除しました（許可リスト %d 件を再表示。強制削除対象は戻しません）。LINE／アライブのインストールとアカウント外しは引き続き使えます。</string>
     <string name="toast_return_personal_not_owner">Device Owner ではないため解除できません</string>
     <string name="toast_return_personal_failed">Device Owner の解除に失敗しました: %1$s</string>
     <string name="return_personal_status_success">個人用に戻す: 成功（Device Owner = いいえ）</string>
     <string name="return_personal_status_failed">個人用に戻す: 失敗 — %1$s</string>
     <string name="return_personal_status_not_owner">個人用に戻す: Device Owner ではありません</string>
 
-    <string name="airplane_mode_label">機内モード</string>
-    <string name="toast_airplane_on">機内モードをオンにしました</string>
-    <string name="toast_airplane_off">機内モードをオフにしました</string>
-    <string name="toast_airplane_failed">機内モードの切替に失敗しました</string>
-    <string name="toast_airplane_open_settings">この端末では自動切替できないため設定画面を開きました</string>
-    <string name="airplane_status_idle"></string>
-    <string name="toast_airplane_not_owner">Device Owner ではないため機内モードを切り替えできません</string>
+    <string name="btn_clear_line_account">LINEアカウントを外す</string>
+    <string name="clear_line_confirm_title">LINEアカウントを外しますか？</string>
+    <string name="clear_line_confirm_message">端末上の LINE ログイン情報を消します。\n\nLINE のアカウント自体（サーバー上）は削除しません。次のスマホで同じアカウントにログインできます。\n\nDevice Owner 中はアプリデータを消去します。個人用モードではアプリ情報画面を開き、「ストレージとキャッシュを消去」を案内します。</string>
+    <string name="clear_line_confirm_ok">外す</string>
+    <string name="toast_clear_line_started">LINE アカウント外しを開始しました</string>
+    <string name="clear_line_status_working">LINE アカウント外し: 処理中…</string>
 </resources>

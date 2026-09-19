@@ -5,11 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
+import app.igni.dpc.install.InstallSupport
 import app.igni.dpc.line.LineInstaller
 
 /**
- * Receives [PackageInstaller] status for silent LINE installs.
- * Never opens Play Store or starts confirm activities (those interrupt setup / home).
+ * Receives [PackageInstaller] status for LINE installs.
+ * Personal mode: launch confirmation UI on PENDING_USER_ACTION.
+ * Device Owner silent path: ignore confirm UI (should not need it).
  */
 class LineInstallStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -22,12 +24,17 @@ class LineInstallStatusReceiver : BroadcastReceiver() {
                 LineInstaller.persistSuccess(context)
             }
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                // Do not start confirm UI or Play — would hijack setup wizard / home.
-                Log.w(TAG, "LINE install needs user action (ignored, no Play): $message")
-                LineInstaller.persistFailure(context, "user_action_ignored: $message")
+                val isDo = InstallSupport.isDeviceOwner(context)
+                if (!isDo && InstallSupport.startPendingUserAction(context, intent)) {
+                    Log.i(TAG, "LINE install: launched user confirmation (personal)")
+                    LineInstaller.persistInstallingUserConfirm(context)
+                } else {
+                    Log.w(TAG, "LINE install needs user action (ignored do=$isDo): $message")
+                    LineInstaller.persistFailure(context, "user_action_ignored: $message")
+                }
             }
             else -> {
-                Log.w(TAG, "LINE install failure status=$status msg=$message (no Play)")
+                Log.w(TAG, "LINE install failure status=$status msg=$message")
                 LineInstaller.persistFailure(context, "status=$status msg=$message")
             }
         }

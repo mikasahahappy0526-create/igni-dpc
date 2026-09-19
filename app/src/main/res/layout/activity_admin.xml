@@ -147,31 +147,7 @@
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
 
-
-        <!-- 機内モード: compact toggle near top actions -->
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchAirplaneMode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginTop="10dp"
-            android:minHeight="40dp"
-            android:paddingVertical="4dp"
-            android:text="@string/airplane_mode_label"
-            android:textColor="@color/igni_text"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/airplaneModeStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="2dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:text=""
-            android:textColor="@color/igni_muted"
-            android:textSize="12sp" />
+        
 
 
         <!-- LINE: [ LINE ] [ Play ] -->
@@ -218,6 +194,21 @@
             android:text="@string/line_status_idle"
             android:textColor="@color/igni_muted"
             android:textSize="13sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnClearLineAccount"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/btn_clear_line_account"
+            android:textColor="@color/igni_text"
+            android:textSize="15sp"
+            app:cornerRadius="14dp"
+            app:strokeColor="@color/igni_outline" />
+
+
 
         <TextView
             android:id="@+id/lineDisclaimer"

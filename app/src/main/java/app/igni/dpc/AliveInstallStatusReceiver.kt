@@ -6,10 +6,11 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
 import app.igni.dpc.alive.AliveInstaller
+import app.igni.dpc.install.InstallSupport
 
 /**
- * Receives [PackageInstaller] status for silent アライブ installs.
- * Never opens Play Store or starts confirm activities.
+ * Receives [PackageInstaller] status for アライブ installs.
+ * Personal mode: launch confirmation UI on PENDING_USER_ACTION.
  */
 class AliveInstallStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -22,11 +23,17 @@ class AliveInstallStatusReceiver : BroadcastReceiver() {
                 AliveInstaller.persistSuccess(context)
             }
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                Log.w(TAG, "Alive install needs user action (ignored, no Play): $message")
-                AliveInstaller.persistFailure(context, "user_action_ignored: $message")
+                val isDo = InstallSupport.isDeviceOwner(context)
+                if (!isDo && InstallSupport.startPendingUserAction(context, intent)) {
+                    Log.i(TAG, "Alive install: launched user confirmation (personal)")
+                    AliveInstaller.persistInstallingUserConfirm(context)
+                } else {
+                    Log.w(TAG, "Alive install needs user action (ignored do=$isDo): $message")
+                    AliveInstaller.persistFailure(context, "user_action_ignored: $message")
+                }
             }
             else -> {
-                Log.w(TAG, "Alive install failure status=$status msg=$message (no Play)")
+                Log.w(TAG, "Alive install failure status=$status msg=$message")
                 AliveInstaller.persistFailure(context, "status=$status msg=$message")
             }
         }
