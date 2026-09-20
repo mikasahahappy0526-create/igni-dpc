@@ -93,6 +93,7 @@ data class AudioStatus(
  *   (Samsung Galaxy A23 / Sense-series); never touches status-bar battery %.
  * - Best-effort OFF for「緊急速報メール」/ cell-broadcast emergency alerts (settings keys +
  *   hide known CB packages; never SMS/phone).
+ * - Best-effort OFF for screen auto-rotation (自動回転 / ACCELEROMETER_ROTATION=0).
  * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
  *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
  *
@@ -386,6 +387,9 @@ class PolicyApplier(context: Context) {
         // OEM / carrier「緊急速報メール」OFF (cell broadcast; best-effort every apply).
         val emergencyAlerts = applyEmergencyAlertsOff(hidden)
 
+        // Screen auto-rotation OFF (自動回転; best-effort every apply).
+        val autoRotate = applyAutoRotateOff()
+
         store.replace(hidden)
         store.markApplied()
         Log.i(
@@ -398,7 +402,8 @@ class PolicyApplier(context: Context) {
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz " +
-                "chargingInfo=$chargingInfo emergencyAlerts=$emergencyAlerts"
+                "chargingInfo=$chargingInfo emergencyAlerts=$emergencyAlerts " +
+                "autoRotate=$autoRotate"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
         // TikTok Lite is force-removed (never install).
@@ -824,6 +829,82 @@ class PolicyApplier(context: Context) {
         val actual = currentScreenTimeoutMs()
         Log.i(TAG, "SCREEN_OFF_TIMEOUT read-back=${actual}ms (want ${SCREEN_OFF_TIMEOUT_MS})")
         return actual
+    }
+
+    /**
+     * Turn OFF screen auto-rotation (自動回転).
+     *
+     * Prefer [Settings.System.ACCELEROMETER_ROTATION] = 0 (put + read-back). Also try
+     * reflective [DevicePolicyManager.setSystemSetting] (DO SystemApi) when present.
+     * Does not force [Settings.System.USER_ROTATION] — leaves the current fixed orientation
+     * so the user can still rotate manually via the system UI when auto-rotate is off.
+     *
+     * Soft-fail: OEM blocks are logged only; never crashes [apply].
+     *
+     * @return short log summary (read-back value or note).
+     */
+    private fun applyAutoRotateOff(): String {
+        val cr = appContext.contentResolver
+        val written = mutableListOf<String>()
+
+        runCatching {
+            val ok = Settings.System.putInt(
+                cr,
+                Settings.System.ACCELEROMETER_ROTATION,
+                0
+            )
+            if (ok) written += "System.putInt:ACCELEROMETER_ROTATION=0"
+            Log.i(TAG, "ACCELEROMETER_ROTATION put=$ok target=0")
+        }.onFailure { Log.w(TAG, "ACCELEROMETER_ROTATION putInt failed", it) }
+
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSystemSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, Settings.System.ACCELEROMETER_ROTATION, "0")
+            written += "DPM.setSystemSetting:ACCELEROMETER_ROTATION=0"
+            Log.i(TAG, "DPM.setSystemSetting(ACCELEROMETER_ROTATION, 0)")
+        }.onFailure {
+            Log.w(TAG, "DPM.setSystemSetting(ACCELEROMETER_ROTATION) unavailable/failed", it)
+        }
+
+        // Some OEMs mirror the toggle under alternate keys; harmless if absent.
+        for (key in listOf("accelerometer_rotation", "auto_rotate", "screen_auto_rotation")) {
+            if (key == Settings.System.ACCELEROMETER_ROTATION) continue
+            runCatching {
+                if (Settings.System.putInt(cr, key, 0)) {
+                    written += "System.putInt:$key=0"
+                    Log.i(TAG, "Auto-rotate OFF wrote Settings.System.$key=0")
+                }
+            }.onFailure { Log.w(TAG, "Settings.System.putInt($key) failed", it) }
+            runCatching {
+                val method = DevicePolicyManager::class.java.getMethod(
+                    "setSystemSetting",
+                    ComponentName::class.java,
+                    String::class.java,
+                    String::class.java
+                )
+                method.invoke(dpm, admin, key, "0")
+                written += "DPM.setSystemSetting:$key=0"
+            }.onFailure { /* expected on many builds */ }
+        }
+
+        val actual = runCatching {
+            Settings.System.getInt(cr, Settings.System.ACCELEROMETER_ROTATION)
+        }.getOrNull()
+        val userRotation = runCatching {
+            Settings.System.getInt(cr, Settings.System.USER_ROTATION)
+        }.getOrNull()
+        val summary = if (written.isEmpty()) {
+            "none (readBack=$actual userRotation=$userRotation)"
+        } else {
+            "ok readBack=$actual userRotation=$userRotation ${written.distinct().joinToString("; ")}"
+        }
+        Log.i(TAG, "Auto-rotate OFF apply: $summary")
+        return summary
     }
 
     /**

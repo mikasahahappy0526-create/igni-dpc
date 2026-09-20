@@ -88,6 +88,10 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
   - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, SCREEN_OFF_TIMEOUT, "1800000")`（DO SystemApi）も試す
   - `setMaximumTimeToLock(30 min)` は補完として残す。一部 OEM ではキーガード／画面オフと干渉しうるため、**SCREEN_OFF_TIMEOUT が残ることを優先**
   - 管理画面（`AdminActivity`）に現在の `SCREEN_OFF_TIMEOUT`（ms）を表示し、再適用後に確認できる
+- **自動回転 OFF（v1.0.41）**:
+  - `Settings.System.putInt(..., ACCELEROMETER_ROTATION, 0)` のあと **読み戻してログ**
+  - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, ACCELEROMETER_ROTATION, "0")` も試す
+  - `USER_ROTATION` は変更しない（固定向きは端末側のまま）。失敗はログのみ
 
 ## Samsung One UI ダークモード（v1.0.9）
 
@@ -101,6 +105,11 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
+
+## v1.0.41（自動回転OFF）
+
+- **自動回転 OFF**: `PolicyApplier.apply()` でベストエフォート `applyAutoRotateOff()` — `Settings.System.ACCELEROMETER_ROTATION=0`（put + 読み戻し）、反射 `DPM.setSystemSetting`、代替キーも試行。`USER_ROTATION` は触らない。OEM 拒否はログのみで適用は継続
+- versionCode **42** / versionName **1.0.41**
 
 ## v1.0.40（LINE成功後に自動で個人用へ＋緊急速報メールOFF）
 
