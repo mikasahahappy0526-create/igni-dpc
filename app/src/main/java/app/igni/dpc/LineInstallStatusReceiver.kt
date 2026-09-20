@@ -7,11 +7,14 @@ import android.content.pm.PackageInstaller
 import android.util.Log
 import app.igni.dpc.install.InstallSupport
 import app.igni.dpc.line.LineInstaller
+import app.igni.dpc.policy.PolicyApplier
 
 /**
  * Receives [PackageInstaller] status for LINE installs.
  * Personal mode: launch confirmation UI on PENDING_USER_ACTION.
  * Device Owner silent path: ignore confirm UI (should not need it).
+ * On real STATUS_SUCCESS while Device Owner: schedule auto「個人用に戻す」
+ * (after Alive can finish) via [PolicyApplier.scheduleAutoReturnAfterLineSuccess].
  */
 class LineInstallStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -22,6 +25,8 @@ class LineInstallStatusReceiver : BroadcastReceiver() {
             PackageInstaller.STATUS_SUCCESS -> {
                 Log.i(TAG, "LINE install success")
                 LineInstaller.persistSuccess(context)
+                // Real PackageInstaller success only (not already-installed no-op).
+                PolicyApplier.scheduleAutoReturnAfterLineSuccess(context)
             }
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 val isDo = InstallSupport.isDeviceOwner(context)

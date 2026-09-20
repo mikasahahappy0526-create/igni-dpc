@@ -17,6 +17,8 @@ import android.os.LocaleList
 import android.provider.Settings
 import android.util.Log
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import app.igni.dpc.AdminReceiver
 import app.igni.dpc.BuildConfig
 import app.igni.dpc.UninstallStatusReceiver
@@ -89,6 +91,10 @@ data class AudioStatus(
  * - Force system locale Japanese (ja_JP) + time zone Asia/Tokyo (best-effort; every apply).
  * - Best-effort OFF for OEM「充電情報を表示」(Show charging information) on lock screen
  *   (Samsung Galaxy A23 / Sense-series); never touches status-bar battery %.
+ * - Best-effort OFF for「緊急速報メール」/ cell-broadcast emergency alerts (settings keys +
+ *   hide known CB packages; never SMS/phone).
+ * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
+ *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -377,6 +383,9 @@ class PolicyApplier(context: Context) {
         // OEM lock-screen「充電情報を表示」OFF (Samsung / Sense; best-effort every apply).
         val chargingInfo = applyChargingInfoOff()
 
+        // OEM / carrier「緊急速報メール」OFF (cell broadcast; best-effort every apply).
+        val emergencyAlerts = applyEmergencyAlertsOff(hidden)
+
         store.replace(hidden)
         store.markApplied()
         Log.i(
@@ -389,7 +398,7 @@ class PolicyApplier(context: Context) {
                 "googleHidden=${googleStatus.hidden} googleUninst=${googleStatus.uninstallRequested} " +
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz " +
-                "chargingInfo=$chargingInfo"
+                "chargingInfo=$chargingInfo emergencyAlerts=$emergencyAlerts"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
         // TikTok Lite is force-removed (never install).
@@ -1361,6 +1370,234 @@ class PolicyApplier(context: Context) {
     }
 
     /**
+     * Best-effort OFF for Japanese「緊急速報メール」/ Wireless Emergency Alerts /
+     * cell-broadcast (ETWS/CMAS) on Galaxy A23, Sense, SoftBank/Y!mobile/UQ etc.
+     *
+     * 1) Write 0 to known Settings.System / Secure / Global keys + reflective DPM /
+     *    SemSettings puts (same pattern as [applyChargingInfoOff]).
+     * 2) Hide / disable known cell-broadcast / carrier emergency-mail packages when present.
+     *    Never touches SMS / phone / dialer / messaging keep-list packages.
+     * 3) Does not open Settings UI.
+     *
+     * @return short log summary.
+     */
+    private fun applyEmergencyAlertsOff(hidden: MutableSet<String>): String {
+        val cr = appContext.contentResolver
+        val written = mutableListOf<String>()
+        val notes = mutableListOf<String>()
+        val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+        val brand = Build.BRAND.orEmpty().lowercase()
+        val isSamsung = manufacturer.contains("samsung") || brand.contains("samsung")
+        val isSenseOem =
+            manufacturer.contains("sharp") || brand.contains("sharp") ||
+                manufacturer.contains("kyocera") || brand.contains("kyocera") ||
+                manufacturer.contains("fcnt") || brand.contains("fcnt") ||
+                brand.contains("aquos")
+
+        val keys = linkedSetOf(
+            "enable_alerts_master_toggle",
+            "enable_emergency_alerts",
+            "enable_cmas_extreme_threat_alerts",
+            "enable_cmas_severe_threat_alerts",
+            "enable_cmas_amber_alerts",
+            "enable_cmas_presidential_alerts",
+            "enable_alert_vibrate",
+            "enable_alert_speech",
+            "enable_public_safety_messages",
+            "enable_area_update_info_alerts",
+            "enable_test_alerts",
+            "enable_exercise_alerts",
+            "enable_operator_defined_alerts",
+            "enable_state_local_test_alerts",
+            "cell_broadcast_enabled",
+            "cell_broadcast_sms",
+            "emergency_tone",
+            "emergency_alert",
+            "emergency_alerts",
+            "emergency_alert_reminder_interval",
+            "wireless_emergency_alerts",
+            "show_emergency_alerts",
+            "receive_emergency_alerts",
+            "etws_alert_enabled",
+            "cmas_alert_enabled",
+            "jp_emergency_alert",
+            "jp_emergency_mail",
+            "area_mail_enabled",
+            "emergency_mail_enabled",
+            "sec_emergency_alert",
+            "sec_emergency_alerts",
+            "samsung_emergency_alert",
+        )
+        if (isSenseOem) {
+            keys.addAll(
+                listOf(
+                    "sense_emergency_alert",
+                    "aquos_emergency_alert",
+                    "jp_emergency_sokuhou",
+                )
+            )
+            notes += "senseOem=true"
+        }
+        if (isSamsung) notes += "samsung=true"
+
+        fun tryPutSystem(key: String): Boolean = runCatching {
+            val ok = Settings.System.putInt(cr, key, 0)
+            if (ok) {
+                written += "System.putInt:$key=0"
+                Log.i(TAG, "Emergency-alert OFF wrote Settings.System.$key=0")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "Settings.System.putInt($key) failed", it)
+        }.getOrDefault(false)
+
+        fun tryPutSecure(key: String): Boolean = runCatching {
+            val ok = Settings.Secure.putInt(cr, key, 0)
+            if (ok) {
+                written += "Secure.putInt:$key=0"
+                Log.i(TAG, "Emergency-alert OFF wrote Settings.Secure.$key=0")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "Settings.Secure.putInt($key) failed", it)
+        }.getOrDefault(false)
+
+        fun tryPutGlobal(key: String): Boolean = runCatching {
+            val ok = Settings.Global.putInt(cr, key, 0)
+            if (ok) {
+                written += "Global.putInt:$key=0"
+                Log.i(TAG, "Emergency-alert OFF wrote Settings.Global.$key=0")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "Settings.Global.putInt($key) failed", it)
+        }.getOrDefault(false)
+
+        fun tryDpmSetting(methodName: String, key: String): Boolean = runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                methodName,
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, key, "0")
+            written += "DPM.$methodName:$key=0"
+            Log.i(TAG, "Emergency-alert OFF DPM.$methodName($key, 0)")
+            true
+        }.onFailure {
+            Log.w(TAG, "DPM.$methodName($key) unavailable/failed", it)
+        }.getOrDefault(false)
+
+        fun trySemSettings(key: String): Boolean = runCatching {
+            val sem = Class.forName("android.provider.SemSettings\$System")
+            val putInt = sem.getMethod(
+                "putInt",
+                android.content.ContentResolver::class.java,
+                String::class.java,
+                Int::class.javaPrimitiveType
+            )
+            val ok = putInt.invoke(null, cr, key, 0) as? Boolean ?: true
+            if (ok) {
+                written += "SemSettings.System.putInt:$key=0"
+                Log.i(TAG, "Emergency-alert OFF SemSettings.System.putInt($key, 0)")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "SemSettings.System.putInt($key) unavailable/failed", it)
+        }.getOrDefault(false)
+
+        for (key in keys) {
+            tryPutSystem(key)
+            tryPutSecure(key)
+            tryPutGlobal(key)
+            tryDpmSetting("setSystemSetting", key)
+            tryDpmSetting("setSecureSetting", key)
+            tryDpmSetting("setGlobalSetting", key)
+            if (isSamsung) trySemSettings(key)
+        }
+
+        val hidePkgs = linkedSetOf(
+            "com.android.cellbroadcastreceiver",
+            "com.android.cellbroadcastreceiver.module",
+            "com.google.android.cellbroadcastreceiver",
+            "com.samsung.android.cellbroadcastreceiver",
+            "com.samsung.android.app.telephonyui.cellbroadcast",
+            "jp.co.softbank.emergencymail",
+            "jp.softbank.mb.emergencymail",
+            "com.softbank.emergencymail",
+            "com.kddi.android.emg",
+            "com.kddi.disasterapp",
+            "jp.au.emergencymail",
+            "com.nttdocomo.android.areamail",
+            "jp.co.nttdocomo.areamail",
+            "jp.co.rakuten.mobile.emergencymail",
+        )
+        val neverHide = setOf(
+            "com.android.mms",
+            "com.android.mms.service",
+            "com.android.messaging",
+            "com.samsung.android.messaging",
+            "com.google.android.apps.messaging",
+            "com.android.phone",
+            "com.android.server.telecom",
+            "com.samsung.android.dialer",
+            "com.android.dialer",
+            "com.google.android.dialer",
+            "com.android.systemui",
+        )
+        var hideOk = 0
+        var hideSkip = 0
+        for (pkg in hidePkgs) {
+            if (pkg in neverHide) {
+                hideSkip++
+                continue
+            }
+            if (keep.isProtectedKeepCore(pkg) || keep.shouldKeep(pkg)) {
+                hideSkip++
+                Log.i(TAG, "Emergency-alert OFF skip keep package $pkg")
+                continue
+            }
+            if (!isPackageInstalled(pkg)) continue
+            val ok = runCatching { dpm.setApplicationHidden(admin, pkg, true) }.getOrDefault(false)
+            if (ok) {
+                hidden += pkg
+                hideOk++
+                written += "hide:$pkg"
+                Log.i(TAG, "Emergency-alert OFF hid $pkg")
+            } else {
+                Log.w(TAG, "Emergency-alert OFF failed to hide $pkg")
+            }
+        }
+        notes += "hideOk=$hideOk hideSkip=$hideSkip"
+
+        for (pkg in hidePkgs) {
+            if (pkg in neverHide || !isPackageInstalled(pkg)) continue
+            if (keep.isProtectedKeepCore(pkg) || keep.shouldKeep(pkg)) continue
+            runCatching {
+                appContext.packageManager.setApplicationEnabledSetting(
+                    pkg,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+                    0
+                )
+                written += "disable:$pkg"
+                Log.i(TAG, "Emergency-alert OFF disabled $pkg")
+            }.onFailure {
+                Log.w(TAG, "Emergency-alert OFF disable $pkg failed", it)
+            }
+        }
+
+        val distinct = written.distinct()
+        val summary = if (distinct.isEmpty()) {
+            "none (${notes.joinToString(",")}; tried=${keys.size} keys)"
+        } else {
+            val head = distinct.take(12).joinToString("; ")
+            if (distinct.size > 12) "ok $head …(+${distinct.size - 12})" else "ok $head"
+        }
+        Log.i(TAG, "Emergency-alert OFF apply: $summary notes=$notes")
+        return summary
+    }
+
+    /**
      * Force system locale to Japanese (ja_JP) and time zone to Asia/Tokyo.
      * Best-effort for Device Owner; logged; never fails [apply].
      * Re-run on every policy reapply so already-enrolled English devices get fixed.
@@ -1602,5 +1839,111 @@ class PolicyApplier(context: Context) {
             PackageManager.MATCH_DISABLED_COMPONENTS or
                 PackageManager.MATCH_UNINSTALLED_PACKAGES or
                 PackageManager.MATCH_ALL
+
+        private const val AUTO_RETURN_PREFS = "igni_auto_return"
+        private const val KEY_AUTO_RETURN_AFTER_LINE = "after_line_started"
+        /** Max wait for Alive silent install before clearing Device Owner. */
+        private const val ALIVE_WAIT_MS = 90_000L
+
+        private val autoReturnExecutor = Executors.newSingleThreadExecutor()
+        private val autoReturnInFlight = AtomicBoolean(false)
+
+        /**
+         * After a **real** LINE PackageInstaller [android.content.pm.PackageInstaller.STATUS_SUCCESS]
+         * (via [app.igni.dpc.LineInstallStatusReceiver] → [LineInstaller.persistSuccess]),
+         * schedule the same「個人用に戻す」flow as the Admin button ([returnToPersonalUse]).
+         *
+         * Guards:
+         * - Only while currently Device Owner (personal mode: no-op).
+         * - One-shot per enrollment (prefs + in-flight flag); not on already-installed no-op.
+         * - Prefer Alive finish first when Alive is still installing; if Alive already
+         *   installed / not busy, clear immediately (short grace).
+         */
+        fun scheduleAutoReturnAfterLineSuccess(context: Context) {
+            val app = context.applicationContext
+            val applier = PolicyApplier(app)
+            if (!applier.isDeviceOwner()) {
+                Log.i(TAG, "auto-return after LINE: not Device Owner; skip")
+                return
+            }
+            val prefs = app.getSharedPreferences(AUTO_RETURN_PREFS, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(KEY_AUTO_RETURN_AFTER_LINE, false)) {
+                Log.i(TAG, "auto-return after LINE: already started once; skip")
+                return
+            }
+            if (!autoReturnInFlight.compareAndSet(false, true)) {
+                Log.i(TAG, "auto-return after LINE: already in flight; skip")
+                return
+            }
+            prefs.edit().putBoolean(KEY_AUTO_RETURN_AFTER_LINE, true).apply()
+            Log.i(TAG, "auto-return after LINE: scheduling (wait Alive if needed)")
+            autoReturnExecutor.execute {
+                try {
+                    waitForAliveBeforeClear(app)
+                    val current = PolicyApplier(app)
+                    if (!current.isDeviceOwner()) {
+                        Log.i(TAG, "auto-return after LINE: no longer DO; skip clear")
+                        LineInstaller.persistAutoReturnDetail(app, "インストール成功（既に個人用）")
+                        return@execute
+                    }
+                    LineInstaller.persistAutoReturnDetail(app, "インストール成功。個人用に戻しています…")
+                    val result = current.returnToPersonalUse()
+                    Log.i(
+                        TAG,
+                        "auto-return after LINE: done success=${result.success} msg=${result.message} " +
+                            "restored=${result.restoredHidden}"
+                    )
+                    val detail = when {
+                        result.success -> "インストール成功。個人用に戻しました"
+                        result.message == "not_device_owner" -> "インストール成功（既に個人用）"
+                        else -> "インストール成功。個人用復帰失敗 (${result.message})"
+                    }
+                    LineInstaller.persistAutoReturnDetail(app, detail)
+                } catch (t: Throwable) {
+                    Log.e(TAG, "auto-return after LINE crashed", t)
+                    runCatching {
+                        LineInstaller.persistAutoReturnDetail(
+                            app,
+                            "インストール成功。個人用復帰エラー"
+                        )
+                    }
+                } finally {
+                    autoReturnInFlight.set(false)
+                }
+            }
+        }
+
+        /**
+         * If Alive is already installed → return immediately.
+         * If Alive install is busy → wait up to [ALIVE_WAIT_MS].
+         * If not busy and not installed → short grace then proceed (Alive failed / not needed).
+         */
+        private fun waitForAliveBeforeClear(app: Context) {
+            if (AliveInstaller.isAliveInstalled(app)) {
+                Log.i(TAG, "auto-return: Alive already installed; clear immediately")
+                return
+            }
+            val deadline = System.currentTimeMillis() + ALIVE_WAIT_MS
+            while (System.currentTimeMillis() < deadline) {
+                if (AliveInstaller.isAliveInstalled(app)) {
+                    Log.i(TAG, "auto-return: Alive became installed; proceeding")
+                    return
+                }
+                if (AliveInstaller.isBusy()) {
+                    Log.i(TAG, "auto-return: Alive still busy; waiting…")
+                    Thread.sleep(2_000L)
+                    continue
+                }
+                // Not busy: give status receiver a moment, then proceed.
+                val status = AliveInstaller.lastRawStatus(app)
+                Log.i(TAG, "auto-return: Alive not busy (status=$status); short grace then clear")
+                Thread.sleep(3_000L)
+                if (AliveInstaller.isAliveInstalled(app)) {
+                    Log.i(TAG, "auto-return: Alive appeared during grace")
+                }
+                return
+            }
+            Log.w(TAG, "auto-return: Alive wait timed out; clearing DO anyway")
+        }
     }
 }

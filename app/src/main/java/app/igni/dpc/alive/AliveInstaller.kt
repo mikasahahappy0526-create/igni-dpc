@@ -134,6 +134,13 @@ object AliveInstaller {
         }.getOrDefault(false)
     }
 
+    /** True while [ensureAliveInstalled] is running on the worker thread. */
+    fun isBusy(): Boolean = busy.get()
+
+    /** Raw prefs status key (downloading/installing/success/failure/…), or null. */
+    fun lastRawStatus(context: Context): String? =
+        prefs(context).getString(KEY_STATUS, null)
+
     /** Launch Alive if installed; returns true when a launcher Intent was started. */
     fun openAlive(context: Context): Boolean {
         val app = context.applicationContext

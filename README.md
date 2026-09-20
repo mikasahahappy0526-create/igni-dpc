@@ -102,6 +102,12 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.40（LINE成功後に自動で個人用へ＋緊急速報メールOFF）
+
+- **LINE 成功後の自動「個人用に戻す」**: Device Owner 中に `PackageInstaller` が LINE を **実インストール成功**（`LineInstallStatusReceiver` → `persistSuccess`）したときだけ、既存の `PolicyApplier.returnToPersonalUse` を自動実行。既に LINE が入っていた no-op では動かない。管理画面の LINE ボタン成功時も同様。個人用モードではクリアしない。ワンショットフラグで再入防止。Alive がインストール中なら最大約 90 秒待ち、済み／不要ならすぐクリア
+- **緊急速報メール OFF**: `apply()` でベストエフォート `applyEmergencyAlertsOff()`（Settings / DPM / SemSettings の候補キーに 0、既知の cell-broadcast／キャリア緊急メールパッケージを hide／disable。SMS・電話は触らない）
+- versionCode **41** / versionName **1.0.40**（※ v1.0.39 が既に versionCode 40 のため繰り上げ）
+
 ## v1.0.39（アライブ見出しの重複を解消）
 
 - 管理画面の「アライブ」見出しを削除し、LINE と同じ `[アライブ][開く]` ボタン行だけに整理

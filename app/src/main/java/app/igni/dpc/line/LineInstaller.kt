@@ -168,7 +168,17 @@ object LineInstaller {
     }
 
     fun persistSuccess(context: Context) {
-        persist(context, "success", "インストール成功")
+        val detail = if (InstallSupport.isDeviceOwner(context)) {
+            "インストール成功（個人用に戻します…）"
+        } else {
+            "インストール成功"
+        }
+        persist(context, "success", detail)
+    }
+
+    /** Soft Japanese status detail after auto return-to-personal attempt. */
+    fun persistAutoReturnDetail(context: Context, detail: String) {
+        persist(context, "success", detail)
     }
 
     fun persistFailure(context: Context, message: String?) {
