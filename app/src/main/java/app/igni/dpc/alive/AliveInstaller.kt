@@ -18,13 +18,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Installs アライブ ([KeepPackages.ALIVE_PACKAGE]) from a fixed GitHub Releases APK URL.
+ * Installs アライブ ([KeepPackages.ALIVE_PACKAGE]) from a pinned APK URL (Cloudflare tunnel + GitHub fallback).
  *
  * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
  * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
  *
- * v1.0.45: pins public Alive **0.1.83** (versionCode 84) as primary download URL,
- * verifies SHA-256 (hard-fail on pinned), falls back to latest/download if pinned fetch fails,
+ * v1.0.46: pins Alive **0.1.84** (versionCode 85) via Cloudflare tunnel primary (+ alt),
+ * verifies SHA-256 (hard-fail on pinned), falls back to GitHub latest/download if pin fetch fails,
  * and surfaces clear Japanese status when an older / differently-signed install blocks update.
  * Does not silently uninstall.
  */
@@ -36,29 +36,37 @@ object AliveInstaller {
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
 
-    /** Pinned public Alive 0.1.83 (primary). */
+    /** Pinned Alive 0.1.84 primary (Cloudflare tunnel — ephemeral). */
     const val APK_URL =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.83/puchicli.apk"
+        "https://truly-premier-var-snap.trycloudflare.com/puchicli.apk"
 
-    /** Fallback when the pinned tag asset cannot be fetched. */
+    /** Alternate pinned path on the same tunnel. */
+    const val APK_URL_ALT =
+        "https://truly-premier-var-snap.trycloudflare.com/puchicli-0.1.84.apk"
+
+    /** Fallback when the pinned tunnel assets cannot be fetched. */
     const val APK_URL_FALLBACK =
         "https://github.com/mikasahahappy0526-create/puchicli/releases/latest/download/puchicli.apk"
 
-    /** SHA-256 of the pinned 0.1.83 APK (hard-fail when primary URL downloads). */
+    /** SHA-256 of the pinned 0.1.84 APK (hard-fail when primary/alt downloads). */
     const val APK_SHA256 =
-        "8c882647b21600fdf5b816b4dd72b29e8ef0632ae97d90b9cb12f225eddc9d5e"
+        "0598b147ffb8200a24aed8654aa9c331d560ff1048023c42ad69b89b2f001439"
 
-    const val TARGET_VERSION_NAME = "0.1.83"
-    const val TARGET_VERSION_CODE = 84L
+    /** Expected size of pinned 0.1.84 APK (bytes); logged, not hard-required. */
+    const val APK_SIZE_BYTES = 1_324_149L
+
+    const val TARGET_VERSION_NAME = "0.1.84"
+    const val TARGET_VERSION_CODE = 85L
 
     /**
-     * Signing-cert SHA-256 of the pinned 0.1.83 build (hex lowercase).
+     * Signing-cert SHA-256 of the pinned Alive build (hex lowercase).
      * Used to detect signature mismatch that requires uninstall before reinstall.
+     * Same publisher key as prior pins unless Alive rotates.
      */
     const val EXPECTED_CERT_SHA256 =
         "106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.45 (Android)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.46 (Android)"
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -126,7 +134,7 @@ object AliveInstaller {
                 return
             }
 
-            persist(app, "downloading", "GitHub から アライブ $TARGET_VERSION_NAME をダウンロード中…")
+            persist(app, "downloading", "アライブ $TARGET_VERSION_NAME をダウンロード中…")
             val dest = File(workDir, "puchicli.apk")
             val downloaded = downloadApk(dest)
             if (downloaded.isFailure) {
@@ -362,34 +370,45 @@ object AliveInstaller {
     }
 
     /**
-     * Download pinned URL first (SHA-256 hard-fail on success).
-     * If pinned download fails, try latest/download (accept even if SHA differs,
+     * Download pinned primary then alt (SHA-256 hard-fail on success).
+     * If both pinned downloads fail, try GitHub latest/download (accept even if SHA differs,
      * so a newer latest can still install; log a warning).
      */
     private fun downloadApk(dest: File): Result<File> {
-        val pinned = downloadOnce(APK_URL, dest)
-        if (pinned.isSuccess) {
+        val pinnedUrls = listOf(APK_URL, APK_URL_ALT)
+        var lastPinnedError: Throwable? = null
+        for (url in pinnedUrls) {
+            val pinned = downloadOnce(url, dest)
+            if (pinned.isFailure) {
+                lastPinnedError = pinned.exceptionOrNull()
+                Log.w(TAG, "Pinned download failed ($url): ${lastPinnedError?.message}")
+                continue
+            }
             val hex = runCatching { fileSha256Hex(dest) }.getOrElse { err ->
                 dest.delete()
                 return Result.failure(IllegalStateException("SHA-256計算失敗: ${err.message}"))
             }
             if (!hex.equals(APK_SHA256, ignoreCase = true)) {
-                Log.e(TAG, "Pinned APK SHA-256 mismatch: got=$hex expected=$APK_SHA256")
+                Log.e(TAG, "Pinned APK SHA-256 mismatch from $url: got=$hex expected=$APK_SHA256")
                 dest.delete()
                 return Result.failure(
                     IllegalStateException("ハッシュ不一致（期待 $APK_SHA256 / 実際 $hex）")
                 )
             }
-            Log.i(TAG, "Pinned Alive APK SHA-256 OK")
+            val size = dest.length()
+            if (size != APK_SIZE_BYTES) {
+                Log.w(TAG, "Pinned Alive size=$size expected=$APK_SIZE_BYTES (continuing; SHA OK)")
+            }
+            Log.i(TAG, "Pinned Alive APK SHA-256 OK from $url (size=$size)")
             return pinned
         }
-        Log.w(TAG, "Pinned download failed: ${pinned.exceptionOrNull()?.message}; trying latest")
+        Log.w(TAG, "All pinned downloads failed; trying GitHub latest")
 
         val latest = downloadOnce(APK_URL_FALLBACK, dest)
         if (latest.isFailure) {
             return Result.failure(
                 latest.exceptionOrNull()
-                    ?: pinned.exceptionOrNull()
+                    ?: lastPinnedError
                     ?: IllegalStateException("ダウンロード失敗")
             )
         }
@@ -399,7 +418,7 @@ object AliveInstaller {
         } else {
             Log.w(
                 TAG,
-                "Fallback latest APK SHA-256 differs from pinned 0.1.83 (got=$hex); accepting latest"
+                "Fallback latest APK SHA-256 differs from pinned 0.1.84 (got=$hex); accepting latest"
             )
         }
         return latest

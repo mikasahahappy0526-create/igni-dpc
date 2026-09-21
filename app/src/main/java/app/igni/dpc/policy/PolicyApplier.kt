@@ -86,7 +86,9 @@ data class AudioStatus(
  * - Prefer Chrome as http/https default browser via DPM persistent preferred activity.
  * - After policies: async silent install LINE / Chrome / Alive if missing (never Play).
  * - Best-effort stock-home pin shortcuts (no custom HOME / dock).
- * - Apply display defaults: 30-minute screen timeout.
+ * - Apply display defaults: screen-off timeout prefer Never (消灯しない),
+ *   else 30 min, else 10 min; force 3-button navigation (not gesture);
+ *   turn ON status-bar battery percentage.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  * - Force system locale Japanese (ja_JP) + time zone Asia/Tokyo (best-effort; every apply).
  * - Best-effort OFF for OEM「充電情報を表示」(Show charging information) on lock screen
@@ -372,8 +374,14 @@ class PolicyApplier(context: Context) {
         // Prefer Chrome as http/https VIEW handler (not Google app).
         val chromeBrowser = preferChromeAsDefaultBrowser()
 
-        // Display policies: 30 min screen timeout (best-effort; never fail apply).
+        // Display policies: screen timeout Never→30m→10m (best-effort; never fail apply).
         val timeoutMs = applyScreenTimeout()
+
+        // Navigation: force 3-button (not gesture); best-effort every apply.
+        val navMode = applyNavigationMode3Button()
+
+        // Status-bar battery % ON (best-effort every apply).
+        val batteryPct = applyBatteryPercentOn()
 
         // Audio: silent/manner + all volumes 0 (best-effort; never fail apply).
         val audio = applyAudioPolicy()
@@ -403,7 +411,7 @@ class PolicyApplier(context: Context) {
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz " +
                 "chargingInfo=$chargingInfo emergencyAlerts=$emergencyAlerts " +
-                "autoRotate=$autoRotate"
+                "autoRotate=$autoRotate navMode=$navMode batteryPct=$batteryPct"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
         // TikTok Lite is force-removed (never install).
@@ -793,22 +801,61 @@ class PolicyApplier(context: Context) {
 
 
     /**
-     * Screen-off timeout 30 minutes.
+     * Screen-off / sleep timeout policy (Molly):
+     * 1) Prefer Never / 「消灯しない」/「スリープしない」if the device accepts it
+     * 2) Else 30 minutes
+     * 3) Else 10 minutes
      *
-     * Prefer [Settings.System.SCREEN_OFF_TIMEOUT] sticking (put + read-back). Also try
-     * reflective [DevicePolicyManager.setSystemSetting] (DO SystemApi) when present.
+     * Writes [Settings.System.SCREEN_OFF_TIMEOUT] via putInt + reflective
+     * [DevicePolicyManager.setSystemSetting], then **read-back** to see if it stuck.
+     * Soft-fail per write. Does **not** call [DevicePolicyManager.setMaximumTimeToLock]
+     * for Never (would fight a long timeout); only sets max lock for finite choices.
      *
      * @return actual SCREEN_OFF_TIMEOUT after writes, or null if unreadable.
      */
     private fun applyScreenTimeout(): Int? {
+        // Prefer Integer.MAX_VALUE (common OEM 「消灯しない」), then other never-ish ms.
+        for (candidate in SCREEN_OFF_NEVER_CANDIDATES) {
+            writeScreenOffTimeout(candidate)
+            val actual = currentScreenTimeoutMs()
+            if (isNeverLikeTimeout(actual)) {
+                // Omit setMaximumTimeToLock so it cannot force a shorter lock than Never.
+                clearMaximumTimeToLockSoft()
+                Log.i(TAG, "SCREEN_OFF_TIMEOUT Never stuck readBack=${actual}ms (wrote $candidate)")
+                return actual
+            }
+            Log.i(TAG, "SCREEN_OFF_TIMEOUT Never candidate $candidate did not stick (readBack=$actual)")
+        }
+
+        // 30 minutes
+        writeScreenOffTimeout(SCREEN_OFF_TIMEOUT_30_MS)
+        var actual = currentScreenTimeoutMs()
+        if (isAtLeastTimeout(actual, SCREEN_OFF_TIMEOUT_30_MS)) {
+            setMaximumTimeToLockSoft(SCREEN_OFF_TIMEOUT_30_MS.toLong())
+            Log.i(TAG, "SCREEN_OFF_TIMEOUT 30min stuck readBack=${actual}ms")
+            return actual
+        }
+        Log.i(TAG, "SCREEN_OFF_TIMEOUT 30min did not stick / too short (readBack=$actual); try 10min")
+
+        // 10 minutes fallback
+        writeScreenOffTimeout(SCREEN_OFF_TIMEOUT_10_MS)
+        actual = currentScreenTimeoutMs()
+        if (actual != null) {
+            setMaximumTimeToLockSoft(SCREEN_OFF_TIMEOUT_10_MS.toLong())
+        }
+        Log.i(TAG, "SCREEN_OFF_TIMEOUT 10min apply readBack=${actual}ms")
+        return actual
+    }
+
+    private fun writeScreenOffTimeout(ms: Int) {
         runCatching {
             val ok = Settings.System.putInt(
                 appContext.contentResolver,
                 Settings.System.SCREEN_OFF_TIMEOUT,
-                SCREEN_OFF_TIMEOUT_MS
+                ms
             )
-            Log.i(TAG, "SCREEN_OFF_TIMEOUT put=$ok target=${SCREEN_OFF_TIMEOUT_MS}ms")
-        }.onFailure { Log.w(TAG, "SCREEN_OFF_TIMEOUT putInt failed", it) }
+            Log.i(TAG, "SCREEN_OFF_TIMEOUT put=$ok target=${ms}ms")
+        }.onFailure { Log.w(TAG, "SCREEN_OFF_TIMEOUT putInt($ms) failed", it) }
 
         runCatching {
             val method = DevicePolicyManager::class.java.getMethod(
@@ -817,18 +864,272 @@ class PolicyApplier(context: Context) {
                 String::class.java,
                 String::class.java
             )
-            method.invoke(dpm, admin, Settings.System.SCREEN_OFF_TIMEOUT, SCREEN_OFF_TIMEOUT_MS.toString())
-            Log.i(TAG, "DPM.setSystemSetting(SCREEN_OFF_TIMEOUT, $SCREEN_OFF_TIMEOUT_MS)")
-        }.onFailure { Log.w(TAG, "DPM.setSystemSetting(SCREEN_OFF_TIMEOUT) unavailable/failed", it) }
+            method.invoke(dpm, admin, Settings.System.SCREEN_OFF_TIMEOUT, ms.toString())
+            Log.i(TAG, "DPM.setSystemSetting(SCREEN_OFF_TIMEOUT, $ms)")
+        }.onFailure {
+            Log.w(TAG, "DPM.setSystemSetting(SCREEN_OFF_TIMEOUT, $ms) unavailable/failed", it)
+        }
+    }
+
+    private fun setMaximumTimeToLockSoft(ms: Long) {
+        runCatching {
+            dpm.setMaximumTimeToLock(admin, ms)
+            Log.i(TAG, "setMaximumTimeToLock(${ms}ms)")
+        }.onFailure { Log.w(TAG, "setMaximumTimeToLock($ms) failed", it) }
+    }
+
+    /**
+     * Clear / raise max lock so it cannot cap a Never / long SCREEN_OFF_TIMEOUT.
+     * Soft-fail: 0 often means "no admin max lock limit".
+     */
+    private fun clearMaximumTimeToLockSoft() {
+        runCatching {
+            dpm.setMaximumTimeToLock(admin, 0L)
+            Log.i(TAG, "setMaximumTimeToLock(0) — no max lock vs Never timeout")
+        }.onFailure { Log.w(TAG, "setMaximumTimeToLock(0) failed", it) }
+    }
+
+    /** True if read-back looks like OEM 「消灯しない」/ Never. */
+    private fun isNeverLikeTimeout(ms: Int?): Boolean {
+        if (ms == null) return false
+        if (ms < 0) return true // some OEMs use -1
+        if (ms == Int.MAX_VALUE) return true
+        // Very large (e.g. >= 24h) treated as Never-ish.
+        return ms >= SCREEN_OFF_NEVER_THRESHOLD_MS
+    }
+
+    /** True if read-back is at least [wantMs] (allow tiny OEM rounding). */
+    private fun isAtLeastTimeout(ms: Int?, wantMs: Int): Boolean {
+        if (ms == null) return false
+        return ms >= wantMs - 1_000
+    }
+
+    /**
+     * Force 3-button navigation (not gesture / not 2-button).
+     *
+     * AOSP: [Settings.Secure] `navigation_mode` = 0 (3-button), 1 (2-button), 2 (gesture).
+     * Prefer standard key via Secure.putInt + reflective DPM.setSecureSetting.
+     * Also soft-try known Samsung / OEM companion keys. Never crashes [apply].
+     *
+     * @return short log summary (read-back or note).
+     */
+    private fun applyNavigationMode3Button(): String {
+        val cr = appContext.contentResolver
+        val written = mutableListOf<String>()
+        val navKey = "navigation_mode" // Settings.Secure.NAVIGATION_MODE
 
         runCatching {
-            dpm.setMaximumTimeToLock(admin, SCREEN_OFF_TIMEOUT_MS.toLong())
-            Log.i(TAG, "setMaximumTimeToLock(${SCREEN_OFF_TIMEOUT_MS}ms)")
-        }.onFailure { Log.w(TAG, "setMaximumTimeToLock failed", it) }
+            val ok = Settings.Secure.putInt(cr, navKey, NAVIGATION_MODE_3_BUTTON)
+            if (ok) written += "Secure.putInt:$navKey=0"
+            Log.i(TAG, "NAVIGATION_MODE put=$ok target=0 (3-button)")
+        }.onFailure { Log.w(TAG, "NAVIGATION_MODE Secure.putInt failed", it) }
 
-        val actual = currentScreenTimeoutMs()
-        Log.i(TAG, "SCREEN_OFF_TIMEOUT read-back=${actual}ms (want ${SCREEN_OFF_TIMEOUT_MS})")
-        return actual
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSecureSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, navKey, NAVIGATION_MODE_3_BUTTON.toString())
+            written += "DPM.setSecureSetting:$navKey=0"
+            Log.i(TAG, "DPM.setSecureSetting(navigation_mode, 0)")
+        }.onFailure {
+            Log.w(TAG, "DPM.setSecureSetting(navigation_mode) unavailable/failed", it)
+        }
+
+        // Samsung / OEM companions — soft-fail; prefer standard NAVIGATION_MODE=0 above.
+        val oemKeys = listOf(
+            // Disable gesture-while-hidden / force buttons where OEMs split the toggle.
+            "navigation_bar_gesture_while_hidden" to 0,
+            "navigation_bar_gesture_detail_type" to 0,
+            "navigationbar_gesture_hint" to 0,
+            "navigation_gestures_enabled" to 0,
+            "secure_gesture_navigation" to 0,
+            "systemui_navigation_bar_mode" to 0,
+            "sem_navbar_gesture" to 0,
+            "navigation_bar_mode" to 0,
+        )
+        for ((key, value) in oemKeys) {
+            runCatching {
+                if (Settings.Secure.putInt(cr, key, value)) {
+                    written += "Secure.putInt:$key=$value"
+                    Log.i(TAG, "Nav 3-button OEM wrote Settings.Secure.$key=$value")
+                }
+            }.onFailure { Log.w(TAG, "Settings.Secure.putInt($key) failed", it) }
+            runCatching {
+                if (Settings.Global.putInt(cr, key, value)) {
+                    written += "Global.putInt:$key=$value"
+                }
+            }.onFailure { /* expected */ }
+            runCatching {
+                val method = DevicePolicyManager::class.java.getMethod(
+                    "setSecureSetting",
+                    ComponentName::class.java,
+                    String::class.java,
+                    String::class.java
+                )
+                method.invoke(dpm, admin, key, value.toString())
+                written += "DPM.setSecureSetting:$key=$value"
+            }.onFailure { /* expected on many builds */ }
+            runCatching {
+                val method = DevicePolicyManager::class.java.getMethod(
+                    "setGlobalSetting",
+                    ComponentName::class.java,
+                    String::class.java,
+                    String::class.java
+                )
+                method.invoke(dpm, admin, key, value.toString())
+                written += "DPM.setGlobalSetting:$key=$value"
+            }.onFailure { /* expected */ }
+        }
+
+        val actual = runCatching { Settings.Secure.getInt(cr, navKey) }.getOrNull()
+        val summary = if (written.isEmpty()) {
+            "none (readBack=$actual)"
+        } else {
+            "ok readBack=$actual ${written.distinct().take(8).joinToString("; ")}"
+        }
+        Log.i(TAG, "Navigation 3-button apply: $summary")
+        return summary
+    }
+
+    /**
+     * Turn ON status-bar battery percentage / remaining battery display.
+     *
+     * Prefer AOSP/Samsung [Settings.System] `show_battery_percent` = 1, then
+     * Secure/Global + known OEM keys. Reflective DPM setSystemSetting /
+     * setSecureSetting / setGlobalSetting. Soft-fail; never crashes [apply].
+     *
+     * Distinct from lock-screen「充電情報を表示」(charging info overlay).
+     *
+     * @return short log summary.
+     */
+    private fun applyBatteryPercentOn(): String {
+        val cr = appContext.contentResolver
+        val written = mutableListOf<String>()
+        val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+        val brand = Build.BRAND.orEmpty().lowercase()
+        val isSamsung = manufacturer.contains("samsung") || brand.contains("samsung")
+
+        // Common AOSP / Samsung / OEM keys for status-bar battery %.
+        val keys = linkedSetOf(
+            "show_battery_percent", // Settings.System.SHOW_BATTERY_PERCENT
+            "status_bar_show_battery_percent",
+            "display_battery_percentage",
+            "battery_percentage",
+            "show_battery_percentage",
+            "status_bar_battery_style", // some OEMs: percent style (best-effort 1)
+            "battery_percent",
+            "sec_status_bar_battery_percent",
+            "display_battery_percent",
+            "lock_screen_show_battery_percent", // harmless if absent
+        )
+        if (isSamsung) {
+            keys.addAll(
+                listOf(
+                    "display_battery_percentage",
+                    "status_bar_show_battery_percent",
+                    "show_battery_percent",
+                )
+            )
+        }
+
+        fun tryPutSystem(key: String): Boolean = runCatching {
+            val ok = Settings.System.putInt(cr, key, 1)
+            if (ok) {
+                written += "System.putInt:$key=1"
+                Log.i(TAG, "Battery% ON wrote Settings.System.$key=1")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "Settings.System.putInt($key)=1 failed", it)
+        }.getOrDefault(false)
+
+        fun tryPutSecure(key: String): Boolean = runCatching {
+            val ok = Settings.Secure.putInt(cr, key, 1)
+            if (ok) {
+                written += "Secure.putInt:$key=1"
+                Log.i(TAG, "Battery% ON wrote Settings.Secure.$key=1")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "Settings.Secure.putInt($key)=1 failed", it)
+        }.getOrDefault(false)
+
+        fun tryPutGlobal(key: String): Boolean = runCatching {
+            val ok = Settings.Global.putInt(cr, key, 1)
+            if (ok) {
+                written += "Global.putInt:$key=1"
+                Log.i(TAG, "Battery% ON wrote Settings.Global.$key=1")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "Settings.Global.putInt($key)=1 failed", it)
+        }.getOrDefault(false)
+
+        fun tryDpmSetting(methodName: String, key: String): Boolean = runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                methodName,
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, key, "1")
+            written += "DPM.$methodName:$key=1"
+            Log.i(TAG, "Battery% ON DPM.$methodName($key, 1)")
+            true
+        }.onFailure {
+            Log.w(TAG, "DPM.$methodName($key)=1 unavailable/failed", it)
+        }.getOrDefault(false)
+
+        fun trySemSettings(key: String): Boolean = runCatching {
+            val sem = Class.forName("android.provider.SemSettings\$System")
+            val putInt = sem.getMethod(
+                "putInt",
+                android.content.ContentResolver::class.java,
+                String::class.java,
+                Int::class.javaPrimitiveType
+            )
+            val ok = putInt.invoke(null, cr, key, 1) as? Boolean ?: true
+            if (ok) {
+                written += "SemSettings.System.putInt:$key=1"
+                Log.i(TAG, "Battery% ON SemSettings.System.putInt($key, 1)")
+            }
+            ok
+        }.onFailure {
+            Log.w(TAG, "SemSettings.System.putInt($key)=1 unavailable/failed", it)
+        }.getOrDefault(false)
+
+        for (key in keys) {
+            tryPutSystem(key)
+            tryPutSecure(key)
+            tryPutGlobal(key)
+            tryDpmSetting("setSystemSetting", key)
+            tryDpmSetting("setSecureSetting", key)
+            tryDpmSetting("setGlobalSetting", key)
+            if (isSamsung) trySemSettings(key)
+        }
+        // Extra SemSettings for preferred keys even if brand string odd.
+        if (!isSamsung) {
+            for (key in listOf("show_battery_percent", "display_battery_percentage")) {
+                trySemSettings(key)
+            }
+        }
+
+        val primary = runCatching {
+            Settings.System.getInt(cr, "show_battery_percent")
+        }.getOrNull()
+        val distinct = written.distinct()
+        val summary = if (distinct.isEmpty()) {
+            "none (readBack show_battery_percent=$primary; tried=${keys.size} keys)"
+        } else {
+            val head = distinct.take(10).joinToString("; ")
+            val more = if (distinct.size > 10) " …(+${distinct.size - 10})" else ""
+            "ok readBack=$primary $head$more"
+        }
+        Log.i(TAG, "Battery% ON apply: $summary")
+        return summary
     }
 
     /**
@@ -1910,8 +2211,25 @@ class PolicyApplier(context: Context) {
 
     companion object {
         private const val TAG = "IgniPolicy"
-        /** 30 minutes in milliseconds. */
+        /** Preferred finite screen-off timeout: 30 minutes (ms). */
         const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
+        /** Fallback finite screen-off timeout: 10 minutes (ms). */
+        const val SCREEN_OFF_TIMEOUT_30_MS = 30 * 60 * 1000
+        const val SCREEN_OFF_TIMEOUT_10_MS = 10 * 60 * 1000
+        /**
+         * OEM 「消灯しない」candidates for [Settings.System.SCREEN_OFF_TIMEOUT].
+         * [Int.MAX_VALUE] is the common AOSP/OEM Never value; extras cover clamps.
+         */
+        val SCREEN_OFF_NEVER_CANDIDATES: IntArray = intArrayOf(
+            Int.MAX_VALUE,
+            Int.MAX_VALUE - 1,
+            24 * 60 * 60 * 1000, // 24h — some OEMs max spinner
+            12 * 60 * 60 * 1000,
+        )
+        /** Read-back ≥ this treated as Never-like (24h). */
+        const val SCREEN_OFF_NEVER_THRESHOLD_MS = 24 * 60 * 60 * 1000
+        /** Settings.Secure.NAVIGATION_MODE: 0 = 3-button. */
+        const val NAVIGATION_MODE_3_BUTTON = 0
         /** System language for Japan provisioning / policy reapply. */
         const val TARGET_LOCALE_TAG = "ja-JP"
         /** IANA time zone for Japan. */

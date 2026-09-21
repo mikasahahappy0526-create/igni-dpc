@@ -83,11 +83,20 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
   - 書き込み後に `setApplicationNightMode`（あれば）と Samsung / night 系ブロードキャストをベストエフォート送信
   - 結果を永続化し、管理画面に **Android SDK・API 有無・適用結果・display_night_theme 読み戻し** を表示
   - **SDK &lt; 29**（Android 10 未満）ではシステム暗色テーマが無い場合がある旨を日本語で注記（Sharp AQUOS sense3 の Android 9 など）
-- **画面オフ 30 分**:
-  - `Settings.System.putInt(..., SCREEN_OFF_TIMEOUT, 1_800_000)` のあと **読み戻してログ**
-  - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, SCREEN_OFF_TIMEOUT, "1800000")`（DO SystemApi）も試す
-  - `setMaximumTimeToLock(30 min)` は補完として残す。一部 OEM ではキーガード／画面オフと干渉しうるため、**SCREEN_OFF_TIMEOUT が残ることを優先**
-  - 管理画面（`AdminActivity`）に現在の `SCREEN_OFF_TIMEOUT`（ms）を表示し、再適用後に確認できる
+- **画面オフ／スリープ（v1.0.46 優先順）**:
+  1. 端末が受け付けるなら **消灯しない**（`SCREEN_OFF_TIMEOUT = Integer.MAX_VALUE` ほか Never 系値を試行し、読み戻しで確認）
+  2. だめなら **30 分**
+  3. だめ／短すぎるなら **10 分**
+  - putInt + 反射 `DPM.setSystemSetting`。書き込みごとに soft-fail
+  - `setMaximumTimeToLock` は **有限タイムアウト選択時のみ**（Never 時は 0 で上限解除し、Never と喧嘩しない）
+  - 管理画面は日本語ラベル（消灯しない / 30分 / 10分）＋ ms
+- **ナビゲーションモード = 3 ボタン（v1.0.46）**:
+  - `Settings.Secure.navigation_mode = 0`（3 ボタン）。反射 `DPM.setSecureSetting` も試行
+  - Samsung 等のジェスチャー系キーもベストエフォートで OFF。失敗はログのみ
+- **バッテリー残量（％）表示 ON（v1.0.46）**:
+  - `Settings.System.show_battery_percent = 1` ほか Secure/Global／Samsung 系キーを試行
+  - 反射 `DPM.setSystemSetting` / `setSecureSetting` / SemSettings。失敗はログのみ
+  - ロック画面の「充電情報を表示」とは別（ステータスバー残量％）
 - **自動回転 OFF（v1.0.41）**:
   - `Settings.System.putInt(..., ACCELEROMETER_ROTATION, 0)` のあと **読み戻してログ**
   - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, ACCELEROMETER_ROTATION, "0")` も試す
@@ -105,6 +114,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
+
+## v1.0.46（画面オフ優先＋3ボタンナビ＋バッテリー％ON＋アライブ 0.1.84）
+
+- **画面オフ／スリープ優先**: Never（消灯しない）→ 30 分 → 10 分。読み戻しで採用判定。`setMaximumTimeToLock` は有限時のみ
+- **ナビゲーション**: `navigation_mode=0`（3 ボタン）をポリシー適用時に強制（ジェスチャーではない）。OEM キーも soft-try
+- **バッテリー残量％表示 ON**: ステータスバー `show_battery_percent=1` ほか OEM キーを soft-try（充電情報オーバーレイとは別）
+- **AliveInstaller**: アライブ **0.1.84**（versionCode 85）を Cloudflare トンネル一次 URL（+ alt）に固定。SHA-256 `0598b147ffb8200a24aed8654aa9c331d560ff1048023c42ad69b89b2f001439` をハード検証。GitHub `latest/download` はフォールバック
+- 管理画面ラベル: 消灯しない / 30分 / 10分
+- versionCode **47** / versionName **1.0.46**
 
 ## v1.0.45（アライブ 0.1.83 固定配布）
 

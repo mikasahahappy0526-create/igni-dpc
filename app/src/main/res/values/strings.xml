@@ -12,7 +12,7 @@
     <string name="unhide_note">「アプリ一覧を表示に戻す」は、非表示にしたシステムアプリのみ再表示できます。すでにアンインストールしたユーザーアプリは復元できません（Playストア等から再インストールが必要です）。</string>
     <string name="allowlist_title">許可リスト（残す）</string>
     <string name="hidden_count">これまでに非表示にしたアプリ: %d 件</string>
-    <string name="screen_timeout_value">画面オフタイムアウト: %d ms</string>
+    <string name="screen_timeout_value">画面オフタイムアウト: %1$s（%2$d ms）</string>
     <string name="screen_timeout_unknown">画面オフタイムアウト: （取得できません）</string>
     <string name="camera_packages_value">検出カメラ (%1$d): %2$s</string>
     <string name="camera_packages_none">検出カメラ: （なし — OEMカメラが見つかりません）</string>

@@ -143,10 +143,25 @@ class AdminActivity : AppCompatActivity() {
 
     private fun updateTimeoutLabel(timeoutMs: Int?) {
         binding.screenTimeout.text = if (timeoutMs != null) {
-            getString(R.string.screen_timeout_value, timeoutMs)
+            getString(R.string.screen_timeout_value, formatScreenTimeoutLabel(timeoutMs), timeoutMs)
         } else {
             getString(R.string.screen_timeout_unknown)
         }
+    }
+
+    /** Japanese Admin label: 消灯しない / 30分 / 10分 / raw minutes. */
+    private fun formatScreenTimeoutLabel(timeoutMs: Int): String {
+        if (timeoutMs < 0 || timeoutMs == Int.MAX_VALUE || timeoutMs >= 24 * 60 * 60 * 1000) {
+            return "消灯しない"
+        }
+        val thirty = 30 * 60 * 1000
+        val ten = 10 * 60 * 1000
+        if (kotlin.math.abs(timeoutMs - thirty) <= 1_000) return "30分"
+        if (kotlin.math.abs(timeoutMs - ten) <= 1_000) return "10分"
+        if (timeoutMs % (60 * 1000) == 0) {
+            return "${timeoutMs / (60 * 1000)}分"
+        }
+        return "${timeoutMs} ms"
     }
 
     private fun updateAudioLabel(status: AudioStatus) {
@@ -336,7 +351,7 @@ class AdminActivity : AppCompatActivity() {
 
     private fun installAlive() {
         // Button-triggered only: GitHub APK install (silent when DO; confirm when personal).
-        // If already on pinned Alive (0.1.83+ matching signature), just open it.
+        // If already on pinned Alive (0.1.84+ matching signature), just open it.
         if (AliveInstaller.isAliveCurrent(this)) {
             binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
             Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
