@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.49（アライブ 0.1.86 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.86**（versionCode 87）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、バージョンタグ URL をフォールバックに使用
+- 両 URL のダウンロード後に SHA-256 `ee3f5ee7066d217ad4988649ba85d8338b76ced404f308ea4bc361eedec9d1e2` を検証し、不一致はハード失敗
+- ダウンロード／キャッシュ名を `alive.apk` に統一。パッケージ `jp.puchicli.app` は変更なし
+- versionCode **50** / versionName **1.0.49**
+- **配布**: 署名済み APK は GitHub Releases `v1.0.49` の `igni-dpc.apk`、ミラー `i` リポジトリ release `1` の `d.apk`
+- **QR**: easy / povo の標準 JSON・PNG を v149 として更新。easy / povo / morley / 2B0F3002 の短いラベル付き QR も `*-v149-simple-labeled.png` として同梱
+
 ## v1.0.48（アライブ 0.1.85 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.85**（versionCode 86）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、バージョンタグ URL をフォールバックに使用
