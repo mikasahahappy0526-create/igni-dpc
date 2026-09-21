@@ -133,7 +133,7 @@ v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインスト�
 - **画面オフ／スリープ優先**: Never（消灯しない）→ 30 分 → 10 分。読み戻しで採用判定。`setMaximumTimeToLock` は有限時のみ
 - **ナビゲーション**: `navigation_mode=0`（3 ボタン）をポリシー適用時に強制（ジェスチャーではない）。OEM キーも soft-try
 - **バッテリー残量％表示 ON**: ステータスバー `show_battery_percent=1` ほか OEM キーを soft-try（充電情報オーバーレイとは別）
-- **AliveInstaller**: アライブ **0.1.84**（versionCode 85）を Cloudflare トンネル一次 URL（+ alt）に固定。SHA-256 `0598b147ffb8200a24aed8654aa9c331d560ff1048023c42ad69b89b2f001439` をハード検証。GitHub `latest/download` はフォールバック
+- **AliveInstaller**: アライブ **0.1.84**（versionCode 85）を Cloudflare トンネル一次 URL（+ alt）に固定。SHA-256 `0598b147ffb8200a24aed8654aa9c331d560ff1048023c42ad69b89b2f001439` をハード検証。GitHub のバージョン固定 URL と `latest/download` を使用
 - 管理画面ラベル: 消灯しない / 30分 / 10分
 - versionCode **47** / versionName **1.0.46**
 
@@ -284,7 +284,7 @@ v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインスト�
   6. `ACTION_AIRPLANE_MODE_CHANGED` を `sendBroadcastAsUser(ALL)`
   7. 全滅時は成功扱いにせず、設定画面 `ACTION_AIRPLANE_MODE_SETTINGS` を開き日本語トースト「この端末では自動切替できないため設定画面を開きました」。Admin に1行ステータス
   - **制限の正直な注記**: 多くの OEM では DO でも `NETWORK_SETTINGS` が無く `setAirplaneMode` が SecurityException になり、Global ビットだけ変わって電波が残ることがある
-- **アライブ自動インストール**: `PolicyApplier.apply()` 後に `AliveInstaller.ensureAliveInstalledAsync`（LINE/Chrome と同様）。既インストールはスキップ。GitHub `puchicli.apk` + PackageInstaller（Play は開かない）。`jp.puchicli.app` は PRODUCT_ALLOWLIST + unhide/enable。Admin「アライブ」は手動再試行用
+- **アライブ自動インストール**: `PolicyApplier.apply()` 後に `AliveInstaller.ensureAliveInstalledAsync`（LINE/Chrome と同様）。既インストールはスキップ。GitHub `alive.apk` + PackageInstaller（Play は開かない）。`jp.puchicli.app` は PRODUCT_ALLOWLIST + unhide/enable。Admin「アライブ」は手動再試行用
 - 維持: Chrome 保護、TikTok Lite 強制削除、ja_JP QR、ホームピン無し、LINE UI、機内スイッチ UI
 - versionCode **30** / versionName **1.0.29**
 
