@@ -115,6 +115,13 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.48（アライブ 0.1.85 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.85**（versionCode 86）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、バージョンタグ URL をフォールバックに使用
+- 両 URL のダウンロード後に SHA-256 `e78e8f927de03654167105a8ba1ecd733a1f68703a47ca5357490af63f780eac` を検証し、不一致はハード失敗
+- ダウンロード／キャッシュ名を `alive.apk` に統一。パッケージ `jp.puchicli.app` は変更なし
+- versionCode **49** / versionName **1.0.48**
+
 ## v1.0.47（KDDI／Sharp 緊急速報メール抑止）
 
 - **緊急速報メール OFF**: `com.kddi.android.cmail`（au 緊急速報メール）と `jp.co.sharp.android.safetyalert`（Sharp Sense safety alert）を hide／disable 対象に追加。一般アンインストール pass からは除外し、既存の SMS／電話パッケージは変更しない
