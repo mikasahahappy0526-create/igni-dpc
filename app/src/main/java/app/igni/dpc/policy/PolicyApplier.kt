@@ -295,6 +295,10 @@ class PolicyApplier(context: Context) {
                 if (hidden.add(pkg)) newlyHidden++
                 continue
             }
+            // Emergency-alert packages are suppressed by applyEmergencyAlertsOff() below;
+            // do not uninstall them here or let the generic pass override that path.
+            if (pkg in KeepPackages.EMERGENCY_ALERT_PACKAGES) continue
+
             // Hard deny + shouldKeep: never uninstall or hide these.
             // CRITICAL / launcher / systemui stay protected via shouldKeep — do not widen.
             if (keep.isHardDenyUninstall(pkg)) continue
@@ -1793,6 +1797,7 @@ class PolicyApplier(context: Context) {
             "enable_state_local_test_alerts",
             "cell_broadcast_enabled",
             "cell_broadcast_sms",
+            "cdma_cell_broadcast_sms",
             "emergency_tone",
             "emergency_alert",
             "emergency_alerts",
@@ -1909,9 +1914,11 @@ class PolicyApplier(context: Context) {
             "com.softbank.emergencymail",
             "com.kddi.android.emg",
             "com.kddi.disasterapp",
+            "com.kddi.android.cmail",
             "jp.au.emergencymail",
             "com.nttdocomo.android.areamail",
             "jp.co.nttdocomo.areamail",
+            "jp.co.sharp.android.safetyalert",
             "jp.co.rakuten.mobile.emergencymail",
         )
         val neverHide = setOf(

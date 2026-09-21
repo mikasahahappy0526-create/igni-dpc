@@ -379,6 +379,16 @@ class KeepPackages(private val context: Context) {
         const val IGN_PACKAGE = "app.igni.dpc"
 
         /**
+         * Emergency-alert packages are handled by PolicyApplier.applyEmergencyAlertsOff().
+         * Keep them out of the general uninstall pass so the dedicated hide/disable path
+         * remains authoritative; these are deliberately not treated as visible keep packages.
+         */
+        val EMERGENCY_ALERT_PACKAGES: Set<String> = linkedSetOf(
+            "com.kddi.android.cmail",
+            "jp.co.sharp.android.safetyalert",
+        )
+
+        /**
          * Google app / search / assistant — force-remove (uninstall preferred, then hide).
          * Do **not** treat as Chrome. Never includes Chrome / Play / Settings.
          */

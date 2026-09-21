@@ -115,6 +115,12 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.47（KDDI／Sharp 緊急速報メール抑止）
+
+- **緊急速報メール OFF**: `com.kddi.android.cmail`（au 緊急速報メール）と `jp.co.sharp.android.safetyalert`（Sharp Sense safety alert）を hide／disable 対象に追加。一般アンインストール pass からは除外し、既存の SMS／電話パッケージは変更しない
+- **設定キー**: `cdma_cell_broadcast_sms=0` を候補に追加（既存の cell-broadcast／ETWS キーと同じ settings pass）
+- versionCode **48** / versionName **1.0.47**
+
 ## v1.0.46（画面オフ優先＋3ボタンナビ＋バッテリー％ON＋アライブ 0.1.84）
 
 - **画面オフ／スリープ優先**: Never（消灯しない）→ 30 分 → 10 分。読み戻しで採用判定。`setMaximumTimeToLock` は有限時のみ
