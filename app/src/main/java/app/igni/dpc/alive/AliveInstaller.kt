@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
  * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
  *
- * v1.0.42: pins public Alive **0.1.80** (versionCode 81) as primary download URL,
+ * v1.0.43: pins public Alive **0.1.81** (versionCode 82) as primary download URL,
  * verifies SHA-256 (hard-fail on pinned), falls back to latest/download if pinned fetch fails,
  * and surfaces clear Japanese status when an older / differently-signed install blocks update.
  * Does not silently uninstall.
@@ -36,29 +36,29 @@ object AliveInstaller {
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
 
-    /** Pinned public Alive 0.1.80 (primary). */
+    /** Pinned public Alive 0.1.81 (primary). */
     const val APK_URL =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.80/puchicli.apk"
+        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.81/puchicli.apk"
 
     /** Fallback when the pinned tag asset cannot be fetched. */
     const val APK_URL_FALLBACK =
         "https://github.com/mikasahahappy0526-create/puchicli/releases/latest/download/puchicli.apk"
 
-    /** SHA-256 of the pinned 0.1.80 APK (hard-fail when primary URL downloads). */
+    /** SHA-256 of the pinned 0.1.81 APK (hard-fail when primary URL downloads). */
     const val APK_SHA256 =
-        "cd153617fd28aa3a98a26fa8ae95f186c5eab782b9ce3596a11f5f4369cdf6e6"
+        "f61b35450a78110e4cfd877b56bdb7df4caca96ea4983f538821db1cefb21fda"
 
-    const val TARGET_VERSION_NAME = "0.1.80"
-    const val TARGET_VERSION_CODE = 81L
+    const val TARGET_VERSION_NAME = "0.1.81"
+    const val TARGET_VERSION_CODE = 82L
 
     /**
-     * Signing-cert SHA-256 of the pinned 0.1.80 build (hex lowercase).
+     * Signing-cert SHA-256 of the pinned 0.1.81 build (hex lowercase).
      * Used to detect signature mismatch that requires uninstall before reinstall.
      */
     const val EXPECTED_CERT_SHA256 =
         "106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.42 (Android)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.43 (Android)"
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -399,7 +399,7 @@ object AliveInstaller {
         } else {
             Log.w(
                 TAG,
-                "Fallback latest APK SHA-256 differs from pinned 0.1.80 (got=$hex); accepting latest"
+                "Fallback latest APK SHA-256 differs from pinned 0.1.81 (got=$hex); accepting latest"
             )
         }
         return latest
