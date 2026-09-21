@@ -336,7 +336,8 @@ class AdminActivity : AppCompatActivity() {
 
     private fun installAlive() {
         // Button-triggered only: GitHub APK install (silent when DO; confirm when personal).
-        if (AliveInstaller.isAliveInstalled(this)) {
+        // If already on pinned Alive (0.1.80+ matching signature), just open it.
+        if (AliveInstaller.isAliveCurrent(this)) {
             binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
             Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
             AliveInstaller.openAlive(this)

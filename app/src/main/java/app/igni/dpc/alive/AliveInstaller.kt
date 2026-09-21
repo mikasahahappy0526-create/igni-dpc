@@ -2,14 +2,18 @@ package app.igni.dpc.alive
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import app.igni.dpc.AliveInstallStatusReceiver
 import app.igni.dpc.install.InstallSupport
 import app.igni.dpc.policy.KeepPackages
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -18,6 +22,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
  * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
+ *
+ * v1.0.42: pins public Alive **0.1.80** (versionCode 81) as primary download URL,
+ * verifies SHA-256 (hard-fail on pinned), falls back to latest/download if pinned fetch fails,
+ * and surfaces clear Japanese status when an older / differently-signed install blocks update.
+ * Does not silently uninstall.
  */
 object AliveInstaller {
 
@@ -27,15 +36,29 @@ object AliveInstaller {
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
 
-    /** Prefer latest/download so Alive can update without an Igni bump. */
+    /** Pinned public Alive 0.1.80 (primary). */
     const val APK_URL =
+        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.80/puchicli.apk"
+
+    /** Fallback when the pinned tag asset cannot be fetched. */
+    const val APK_URL_FALLBACK =
         "https://github.com/mikasahahappy0526-create/puchicli/releases/latest/download/puchicli.apk"
 
-    /** Same asset via fixed tag path (fallback). */
-    const val APK_URL_FALLBACK =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/latest-apk/puchicli.apk"
+    /** SHA-256 of the pinned 0.1.80 APK (hard-fail when primary URL downloads). */
+    const val APK_SHA256 =
+        "cd153617fd28aa3a98a26fa8ae95f186c5eab782b9ce3596a11f5f4369cdf6e6"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.37 (Android)"
+    const val TARGET_VERSION_NAME = "0.1.80"
+    const val TARGET_VERSION_CODE = 81L
+
+    /**
+     * Signing-cert SHA-256 of the pinned 0.1.80 build (hex lowercase).
+     * Used to detect signature mismatch that requires uninstall before reinstall.
+     */
+    const val EXPECTED_CERT_SHA256 =
+        "106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1"
+
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.42 (Android)"
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -57,6 +80,10 @@ object AliveInstaller {
     /**
      * Synchronous attempt (worker thread). Safe for Admin「アライブを入れる」.
      * Skips overlapping runs. Works in DO (silent) and personal mode (user confirm).
+     *
+     * If Alive is already at/above the pinned version with the expected signature, no-ops.
+     * If signature differs, surfaces [need_uninstall] — does **not** silently uninstall.
+     * If same signature but older, downloads and attempts in-place update.
      */
     fun ensureAliveInstalled(context: Context) {
         val app = context.applicationContext
@@ -70,9 +97,27 @@ object AliveInstaller {
         }
         try {
             if (isAliveInstalled(app)) {
-                Log.i(TAG, "Alive already installed; skip")
-                persist(app, "already_installed", "アライブ はインストール済み")
-                return
+                val code = installedVersionCode(app)
+                val sigOk = installedSignatureMatches(app)
+                if (sigOk && code >= TARGET_VERSION_CODE) {
+                    Log.i(TAG, "Alive already current (vc=$code); skip")
+                    persist(
+                        app,
+                        "already_installed",
+                        "アライブ ${installedVersionName(app) ?: TARGET_VERSION_NAME} はインストール済み"
+                    )
+                    return
+                }
+                if (!sigOk) {
+                    Log.w(TAG, "Alive installed with different signature; uninstall required")
+                    persist(
+                        app,
+                        "need_uninstall",
+                        "アライブの署名が違います。一度アンインストールしてから入れ直してください"
+                    )
+                    return
+                }
+                Log.i(TAG, "Alive installed but older (vc=$code < $TARGET_VERSION_CODE); updating")
             }
 
             val isDo = InstallSupport.isDeviceOwner(app)
@@ -81,13 +126,17 @@ object AliveInstaller {
                 return
             }
 
-            persist(app, "downloading", "GitHub から APK をダウンロード中…")
+            persist(app, "downloading", "GitHub から アライブ $TARGET_VERSION_NAME をダウンロード中…")
             val dest = File(workDir, "puchicli.apk")
             val downloaded = downloadApk(dest)
             if (downloaded.isFailure) {
                 val err = downloaded.exceptionOrNull()?.message ?: "download failed"
                 Log.w(TAG, "Alive download failed: $err")
-                persist(app, "silent_failed", "DL失敗 ($err)")
+                if (err.contains("ハッシュ不一致") || err.contains("SHA-256", ignoreCase = true)) {
+                    persist(app, "sha_mismatch", "ハッシュ不一致のため中止しました（$err）")
+                } else {
+                    persist(app, "silent_failed", "DL失敗 ($err)")
+                }
                 return
             }
 
@@ -101,6 +150,14 @@ object AliveInstaller {
             if (installed.isFailure) {
                 val err = installed.exceptionOrNull()?.message ?: "install failed"
                 Log.w(TAG, "Alive PackageInstaller failed: $err")
+                if (isAliveInstalled(app) && !installedSignatureMatches(app)) {
+                    persist(
+                        app,
+                        "need_uninstall",
+                        "インストール失敗（署名不一致）。アライブをアンインストールしてから再試行してください"
+                    )
+                    return
+                }
                 if (!isDo) {
                     val view = InstallSupport.installViaViewIntent(app, dest)
                     if (view.isSuccess) {
@@ -108,11 +165,22 @@ object AliveInstaller {
                         return
                     }
                 }
-                persist(app, "silent_failed", if (isDo) "サイレント失敗 ($err)" else "インストール失敗 ($err)")
+                val conflictHint =
+                    if (isAliveInstalled(app)) {
+                        "。既存アライブが古い／署名違いの場合はアンインストールが必要です"
+                    } else {
+                        ""
+                    }
+                persist(
+                    app,
+                    "silent_failed",
+                    if (isDo) "サイレント失敗 ($err)$conflictHint"
+                    else "インストール失敗 ($err)$conflictHint"
+                )
                 return
             }
             if (isAliveInstalled(app)) {
-                persist(app, "success", "インストール確認済み")
+                persist(app, "success", "インストール確認済み（$TARGET_VERSION_NAME）")
             } else {
                 persist(
                     app,
@@ -132,6 +200,13 @@ object AliveInstaller {
             context.packageManager.getPackageInfo(KeepPackages.ALIVE_PACKAGE, 0)
             true
         }.getOrDefault(false)
+    }
+
+    /** True when installed Alive is at/above pinned versionCode with expected signature. */
+    fun isAliveCurrent(context: Context): Boolean {
+        if (!isAliveInstalled(context)) return false
+        if (!installedSignatureMatches(context.applicationContext)) return false
+        return installedVersionCode(context.applicationContext) >= TARGET_VERSION_CODE
     }
 
     /** True while [ensureAliveInstalled] is running on the worker thread. */
@@ -159,10 +234,15 @@ object AliveInstaller {
 
     /** Short Japanese-only status for Admin UI (no English keys / long tails). */
     fun lastStatusText(context: Context): String {
-        val prefs = prefs(context)
-        val status = prefs.getString(KEY_STATUS, null)
+        val status = prefs(context).getString(KEY_STATUS, null)
         if (status == null) {
-            return if (isAliveInstalled(context)) "インストール済み" else "未インストール"
+            return when {
+                isAliveCurrent(context) -> "インストール済み"
+                isAliveInstalled(context) && !installedSignatureMatches(context) ->
+                    "要アンインストール（署名違い）"
+                isAliveInstalled(context) -> "旧バージョン（更新可）"
+                else -> "未インストール"
+            }
         }
         return when (status) {
             "already_installed", "success", "browser_preferred" -> "インストール済み"
@@ -173,8 +253,14 @@ object AliveInstaller {
                 else "確認待ち（個人用）"
             }
             "need_permission" -> "許可が必要（個人用）"
+            "need_uninstall" -> "要アンインストール（署名/旧版）"
+            "sha_mismatch" -> "ハッシュ不一致（中止）"
             "failure", "silent_failed" -> "失敗"
-            else -> if (isAliveInstalled(context)) "インストール済み" else "未インストール"
+            else -> when {
+                isAliveCurrent(context) -> "インストール済み"
+                isAliveInstalled(context) -> "旧バージョン（更新可）"
+                else -> "未インストール"
+            }
         }
     }
 
@@ -201,15 +287,122 @@ object AliveInstaller {
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    private fun downloadApk(dest: File): Result<File> {
-        var lastError: Throwable? = null
-        for (url in listOf(APK_URL, APK_URL_FALLBACK)) {
-            val result = downloadOnce(url, dest)
-            if (result.isSuccess) return result
-            lastError = result.exceptionOrNull()
-            Log.w(TAG, "Download failed for $url: ${lastError?.message}")
+    private fun installedVersionCode(context: Context): Long {
+        return runCatching {
+            val info = context.packageManager.getPackageInfo(KeepPackages.ALIVE_PACKAGE, 0)
+            if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else {
+                @Suppress("DEPRECATION")
+                info.versionCode.toLong()
+            }
+        }.getOrDefault(-1L)
+    }
+
+    private fun installedVersionName(context: Context): String? {
+        return runCatching {
+            context.packageManager.getPackageInfo(KeepPackages.ALIVE_PACKAGE, 0).versionName
+        }.getOrNull()
+    }
+
+    /** True when installed Alive signing cert SHA-256 matches [EXPECTED_CERT_SHA256]. */
+    private fun installedSignatureMatches(context: Context): Boolean {
+        val digests = installedCertSha256Hexes(context)
+        if (digests.isEmpty()) {
+            // Unable to read signatures — do not block update; treat as unknown/match.
+            Log.w(TAG, "Could not read Alive signing certs; assuming match")
+            return true
         }
-        return Result.failure(lastError ?: IllegalStateException("ダウンロード失敗"))
+        return digests.any { it.equals(EXPECTED_CERT_SHA256, ignoreCase = true) }
+    }
+
+    private fun installedCertSha256Hexes(context: Context): List<String> {
+        return runCatching {
+            val pm = context.packageManager
+            if (Build.VERSION.SDK_INT >= 28) {
+                val info = pm.getPackageInfo(
+                    KeepPackages.ALIVE_PACKAGE,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                )
+                val signingInfo = info.signingInfo ?: return@runCatching emptyList()
+                val signers = if (signingInfo.hasMultipleSigners()) {
+                    signingInfo.apkContentsSigners
+                } else {
+                    signingInfo.signingCertificateHistory ?: signingInfo.apkContentsSigners
+                }
+                signers.map { certSha256Hex(it.toByteArray()) }
+            } else {
+                @Suppress("DEPRECATION")
+                val info = pm.getPackageInfo(
+                    KeepPackages.ALIVE_PACKAGE,
+                    PackageManager.GET_SIGNATURES
+                )
+                @Suppress("DEPRECATION")
+                info.signatures?.map { certSha256Hex(it.toByteArray()) } ?: emptyList()
+            }
+        }.onFailure {
+            Log.w(TAG, "installedCertSha256Hexes failed", it)
+        }.getOrDefault(emptyList())
+    }
+
+    private fun certSha256Hex(certBytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(certBytes)
+        return digest.joinToString("") { b -> "%02x".format(b) }
+    }
+
+    private fun fileSha256Hex(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buf = ByteArray(8192)
+            while (true) {
+                val n = input.read(buf)
+                if (n <= 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { b -> "%02x".format(b) }
+    }
+
+    /**
+     * Download pinned URL first (SHA-256 hard-fail on success).
+     * If pinned download fails, try latest/download (accept even if SHA differs,
+     * so a newer latest can still install; log a warning).
+     */
+    private fun downloadApk(dest: File): Result<File> {
+        val pinned = downloadOnce(APK_URL, dest)
+        if (pinned.isSuccess) {
+            val hex = runCatching { fileSha256Hex(dest) }.getOrElse { err ->
+                dest.delete()
+                return Result.failure(IllegalStateException("SHA-256計算失敗: ${err.message}"))
+            }
+            if (!hex.equals(APK_SHA256, ignoreCase = true)) {
+                Log.e(TAG, "Pinned APK SHA-256 mismatch: got=$hex expected=$APK_SHA256")
+                dest.delete()
+                return Result.failure(
+                    IllegalStateException("ハッシュ不一致（期待 $APK_SHA256 / 実際 $hex）")
+                )
+            }
+            Log.i(TAG, "Pinned Alive APK SHA-256 OK")
+            return pinned
+        }
+        Log.w(TAG, "Pinned download failed: ${pinned.exceptionOrNull()?.message}; trying latest")
+
+        val latest = downloadOnce(APK_URL_FALLBACK, dest)
+        if (latest.isFailure) {
+            return Result.failure(
+                latest.exceptionOrNull()
+                    ?: pinned.exceptionOrNull()
+                    ?: IllegalStateException("ダウンロード失敗")
+            )
+        }
+        val hex = runCatching { fileSha256Hex(dest) }.getOrNull()
+        if (hex != null && hex.equals(APK_SHA256, ignoreCase = true)) {
+            Log.i(TAG, "Fallback latest APK matches pinned SHA-256")
+        } else {
+            Log.w(
+                TAG,
+                "Fallback latest APK SHA-256 differs from pinned 0.1.80 (got=$hex); accepting latest"
+            )
+        }
+        return latest
     }
 
     private fun downloadOnce(url: String, dest: File): Result<File> = runCatching {

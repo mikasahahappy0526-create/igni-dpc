@@ -106,6 +106,14 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.42（アライブ 0.1.80 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.80**（versionCode 81）の GitHub Releases APK を一次 URL に固定。`latest/download` はフォールバック
+- ダウンロード後に SHA-256（`cd153617fd28aa3a98a26fa8ae95f186c5eab782b9ce3596a11f5f4369cdf6e6`）を検証し、不一致は日本語ステータス「ハッシュ不一致（中止）」でハード失敗
+- 既存アライブが署名違い／更新不可のときは「要アンインストール（署名/旧版）」を表示（サイレントアンインストールはしない）
+- KeepPackages の `jp.puchicli.app` は変更なし
+- versionCode **43** / versionName **1.0.42**
+
 ## v1.0.41（自動回転OFF）
 
 - **自動回転 OFF**: `PolicyApplier.apply()` でベストエフォート `applyAutoRotateOff()` — `Settings.System.ACCELEROMETER_ROTATION=0`（put + 読み戻し）、反射 `DPM.setSystemSetting`、代替キーも試行。`USER_ROTATION` は触らない。OEM 拒否はログのみで適用は継続
