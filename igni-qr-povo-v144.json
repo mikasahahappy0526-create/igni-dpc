@@ -1,0 +1,10 @@
+{
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "app.igni.dpc/.AdminReceiver",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "yOZEhRr9nIbif0_vEKh4PE1exHHPPUQeDOuyGnkuOwA",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://github.com/mikasahahappy0526-create/i/releases/download/1/d.apk",
+  "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
+  "android.app.extra.PROVISIONING_LOCALE": "ja_JP",
+  "android.app.extra.PROVISIONING_TIME_ZONE": "Asia/Tokyo",
+  "android.app.extra.PROVISIONING_WIFI_SSID": "povo2.0",
+  "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": "WPA"
+}

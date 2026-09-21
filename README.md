@@ -106,6 +106,13 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.44（アライブ 0.1.82 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.82**（versionCode 83）の GitHub Releases APK を一次 URL に固定。`latest/download` はフォールバック
+- ダウンロード後に SHA-256（`646bd751c434627d8c7d05981156bcf4f6fb6ddde62c37d3cbf0d9f798aa3af6`）を検証し、不一致は日本語ステータス「ハッシュ不一致（中止）」でハード失敗
+- KeepPackages のパッケージ `jp.puchicli.app` は変更なし
+- versionCode **45** / versionName **1.0.44**
+
 ## v1.0.43（アライブ 0.1.81 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.81**（versionCode 82）の GitHub Releases APK を一次 URL に固定。`latest/download` はフォールバック
