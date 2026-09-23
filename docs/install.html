@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>イグニ セットアップ</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: #0b0b0f;
+    color: #f5f5f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 12px;
+  }
+  .card {
+    width: min(440px, 94vw);
+    background: #16161d;
+    border: 1px solid #2a2a35;
+    border-radius: 20px;
+    padding: 28px 22px 24px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
+    text-align: center;
+  }
+  .icon {
+    width: 72px; height: 72px; border-radius: 16px;
+    display: block; margin: 0 auto 14px; background: #000; object-fit: cover;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 6px; font-weight: 700; }
+  .ver { opacity: .75; margin: 0 0 18px; font-size: .95rem; }
+  .section-label {
+    text-align: left; font-size: .8rem; opacity: .7;
+    margin: 0 0 8px; font-weight: 600; letter-spacing: .02em;
+  }
+  .ssid-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;
+  }
+  button.ssid {
+    appearance: none; border: 1px solid #2a2a35; background: #1e1e28;
+    color: #f5f5f5; border-radius: 12px; padding: 12px 10px;
+    font-size: .88rem; font-weight: 600; cursor: pointer; line-height: 1.25;
+  }
+  button.ssid.active {
+    border-color: #7c5cff;
+    background: linear-gradient(135deg, rgba(124,92,255,.35), rgba(79,70,229,.25));
+  }
+  button.ssid:active { transform: scale(.98); }
+  #qr-wrap {
+    background: #fff; border-radius: 16px; padding: 14px;
+    display: inline-flex; margin: 4px auto 8px; min-height: 220px;
+    align-items: center; justify-content: center;
+  }
+  #qr-wrap canvas, #qr-wrap img { display: block; width: 220px; height: 220px; }
+  .ssid-now { margin: 0 0 12px; font-size: .9rem; opacity: .85; }
+  ol {
+    text-align: left; margin: 16px 0 0; padding-left: 1.2rem;
+    line-height: 1.55; opacity: .9; font-size: .9rem;
+  }
+  .note { margin-top: 14px; font-size: .8rem; opacity: .65; line-height: 1.45; }
+  code { font-size: .72rem; word-break: break-all; }
+  a.btn {
+    display: block; text-decoration: none;
+    background: linear-gradient(135deg, #7c5cff, #4f46e5);
+    color: #fff; font-weight: 700; padding: 14px 16px; border-radius: 14px;
+    font-size: 1.05rem; margin-top: 16px;
+  }
+  a.btn:active { transform: scale(.98); }
+  .muted { opacity: .55; font-size: .78rem; margin-top: 10px; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+</head>
+<body>
+  <main class="card">
+    <img class="icon" src="./igni-icon.png" alt="イグニ">
+    <h1>イグニ</h1>
+    <p class="ver">Device Owner セットアップ · Android · 1.0.52</p>
+
+    <p class="section-label">1. つなぐ Wi‑Fi を選ぶ</p>
+    <div class="ssid-grid" id="ssid-grid" role="group" aria-label="Wi-Fi SSID"></div>
+
+    <p class="section-label">2. この QR をスキャン</p>
+    <div id="qr-wrap" aria-live="polite"></div>
+    <p class="ssid-now" id="ssid-now"></p>
+
+    <ol>
+      <li>端末を工場出荷状態にリセットする</li>
+      <li>ようこそ画面の同じ場所を 6 回タップして QR リーダーを出す</li>
+      <li>選んだ Wi‑Fi の QR をスキャンする（接続情報も含まれます）</li>
+      <li>セットアップが終わるまで待つ（システムアプリは残る設定）</li>
+    </ol>
+
+    <a class="btn" href="https://github.com/mikasahahappy0526-create/i/releases/download/1/d.apk" download="igni-dpc.apk">APK をダウンロード</a>
+    <p class="note">うまくいかないとき（直リンク）:<br>
+      <code>https://github.com/mikasahahappy0526-create/i/releases/download/1/d.apk</code>
+    </p>
+    <p class="muted">公開予定: github.io/igni-dpc/install.html</p>
+  </main>
+<script>
+const BASE = {
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "app.igni.dpc/.AdminReceiver",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "yOZEhRr9nIbif0_vEKh4PE1exHHPPUQeDOuyGnkuOwA",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://github.com/mikasahahappy0526-create/i/releases/download/1/d.apk",
+  "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true
+};
+
+const NETWORKS = [
+  {
+    id: "easy",
+    label: "31AB5802-5G",
+    payload: {
+      ...BASE,
+      "android.app.extra.PROVISIONING_WIFI_SSID": "31AB5802-5G",
+      "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": "WPA",
+      "android.app.extra.PROVISIONING_WIFI_PASSWORD": "88888888"
+    }
+  },
+  {
+    id: "povo",
+    label: "povo2.0",
+    payload: {
+      ...BASE,
+      "android.app.extra.PROVISIONING_WIFI_SSID": "povo2.0",
+      "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": "NONE"
+    }
+  },
+  {
+    id: "morley",
+    label: "モーリー",
+    payload: {
+      ...BASE,
+      "android.app.extra.PROVISIONING_WIFI_SSID": "モーリー",
+      "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": "WPA",
+      "android.app.extra.PROVISIONING_WIFI_PASSWORD": "88888888"
+    }
+  },
+  {
+    id: "b0f",
+    label: "2B0F3002-5G",
+    payload: {
+      ...BASE,
+      "android.app.extra.PROVISIONING_WIFI_SSID": "2B0F3002-5G",
+      "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": "WPA",
+      "android.app.extra.PROVISIONING_WIFI_PASSWORD": "88888888"
+    }
+  }
+];
+
+let selected = NETWORKS[0].id;
+const grid = document.getElementById("ssid-grid");
+const wrap = document.getElementById("qr-wrap");
+const now = document.getElementById("ssid-now");
+
+function renderButtons() {
+  grid.innerHTML = "";
+  NETWORKS.forEach((n) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ssid" + (n.id === selected ? " active" : "");
+    b.textContent = n.label;
+    b.addEventListener("click", () => {
+      selected = n.id;
+      renderButtons();
+      renderQr();
+    });
+    grid.appendChild(b);
+  });
+}
+
+function renderQr() {
+  const net = NETWORKS.find((n) => n.id === selected);
+  wrap.innerHTML = "";
+  now.textContent = "SSID: " + net.label;
+  const text = JSON.stringify(net.payload);
+  // qrcodejs paints into a container
+  // eslint-disable-next-line no-undef
+  new QRCode(wrap, {
+    text,
+    width: 220,
+    height: 220,
+    correctLevel: QRCode.CorrectLevel.M
+  });
+}
+
+function boot() {
+  if (typeof QRCode === "undefined") {
+    setTimeout(boot, 50);
+    return;
+  }
+  renderButtons();
+  renderQr();
+}
+boot();
+</script>
+</body>
+</html>
