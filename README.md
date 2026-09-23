@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.52（アライブ 0.1.89 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.89**（versionCode 90）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、検証済みの `0.1.89` タグ URL をフォールバックに使用
+- 両 URL のダウンロード後に SHA-256 `46d09a3f2faa2d4f436f9f58fedb928852eec5548e9787505feaefb948181040`（1,442,477 bytes）を検証し、不一致はハード失敗（日本語ステータス）
+- Alive APK の署名証明書 SHA-256 は従来と同じ `106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1`
+- versionCode **53** / versionName **1.0.52**
+- **配布**: 署名済み APK は GitHub Releases `v1.0.52` の `igni-dpc.apk`、ミラー `i` リポジトリ release `1` の `d.apk`
+- **QR**: easy / povo / morley / 2B0F3002 の大きなタイトル（約120px）付き簡易ラベル QR は `*-v152-simple-labeled.png`、ペイロードは対応する `*-v152-simple.json` として同梱
+
 ## v1.0.51（アライブ 0.1.88 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.88**（versionCode 89）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、検証済みのバージョンタグ URL をフォールバックに使用

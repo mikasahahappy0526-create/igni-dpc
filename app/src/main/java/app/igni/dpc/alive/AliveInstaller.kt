@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
  * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
  *
- * v1.0.51: pins Alive **0.1.88** (versionCode 89) via GitHub latest/download,
+ * v1.0.52: pins Alive **0.1.89** (versionCode 90) via GitHub latest/download,
  * verifies SHA-256 with a hard-fail on every source, and falls back to the version tag if latest fetch fails,
  * and surfaces clear Japanese status when an older / differently-signed install blocks update.
  * Does not silently uninstall.
@@ -36,20 +36,20 @@ object AliveInstaller {
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
 
-    /** Pinned Alive 0.1.88 primary (fixed-overwrite latest asset). */
+    /** Pinned Alive 0.1.89 primary (fixed-overwrite latest asset). */
     const val APK_URL =
         "https://github.com/mikasahahappy0526-create/puchicli/releases/latest/download/alive.apk"
 
     /** Version-tag fallback for the pinned Alive release. */
     const val APK_URL_FALLBACK =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.88/alive.apk"
+        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.89/alive.apk"
 
-    /** SHA-256 of the pinned 0.1.88 APK (hard-fail for both sources). */
+    /** SHA-256 of the pinned 0.1.89 APK (hard-fail for both sources). */
     const val APK_SHA256 =
-        "8322ef55448a9aabaf0ba40b3aab66d00ab6e5311ae11c05108517d867fde28d"
+        "46d09a3f2faa2d4f436f9f58fedb928852eec5548e9787505feaefb948181040"
 
-    const val TARGET_VERSION_NAME = "0.1.88"
-    const val TARGET_VERSION_CODE = 89L
+    const val TARGET_VERSION_NAME = "0.1.89"
+    const val TARGET_VERSION_CODE = 90L
 
     /**
      * Signing-cert SHA-256 of the pinned Alive build (hex lowercase).
@@ -59,7 +59,7 @@ object AliveInstaller {
     const val EXPECTED_CERT_SHA256 =
         "106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.51 (Android)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.52 (Android)"
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
