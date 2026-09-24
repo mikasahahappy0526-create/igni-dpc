@@ -5,6 +5,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -75,6 +76,18 @@ object InstallSupport {
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         ).apply {
             setAppPackageName(packageName)
+            if (isDo) {
+                // Policy install, not a raw sideload. Android 13+ marks
+                // PACKAGE_SOURCE_LOCAL_FILE and PACKAGE_SOURCE_DOWNLOADED_FILE with
+                // restricted settings (accessibility). OTHER is the public source for
+                // a device-policy install and is not in that list. Do not claim STORE.
+                runCatching { setInstallReason(PackageManager.INSTALL_REASON_POLICY) }
+                    .onFailure { Log.w(TAG, "setInstallReason(POLICY) failed", it) }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    runCatching { setPackageSource(PackageInstaller.PACKAGE_SOURCE_OTHER) }
+                        .onFailure { Log.w(TAG, "setPackageSource(OTHER) failed", it) }
+                }
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (isDo) {
                     setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)

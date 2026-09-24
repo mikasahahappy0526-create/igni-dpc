@@ -12,8 +12,10 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.media.AudioManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.LocaleList
+import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import java.util.Locale
@@ -98,6 +100,8 @@ data class AudioStatus(
  * - Best-effort OFF for screen auto-rotation (自動回転 / ACCELEROMETER_ROTATION=0).
  * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
  *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
+ * - While still Device Owner (apply + just before that auto-release): USB debugging on
+ *   and stay awake while plugged in (AC/USB/wireless). Settings persist after DO clear.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -178,6 +182,9 @@ class PolicyApplier(context: Context) {
                 audio = audioStatus()
             )
         }
+
+        // Before LINE auto-release: ADB + stay-awake. Re-applied again in returnToPersonalUse.
+        val controllerPrep = applyPcControllerPrep()
 
         runCatching { dpm.setUninstallBlocked(admin, appContext.packageName, true) }
         // Hard-block uninstall of Chrome / Play / Settings / LINE / Alive (defense in depth).
@@ -415,7 +422,8 @@ class PolicyApplier(context: Context) {
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz " +
                 "chargingInfo=$chargingInfo emergencyAlerts=$emergencyAlerts " +
-                "autoRotate=$autoRotate navMode=$navMode batteryPct=$batteryPct"
+                "autoRotate=$autoRotate navMode=$navMode batteryPct=$batteryPct " +
+                "controller=$controllerPrep"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
         // TikTok Lite is force-removed (never install).
@@ -514,6 +522,79 @@ class PolicyApplier(context: Context) {
     }
 
     /**
+     * Device Owner window only: turn on USB debugging and stay awake while charging.
+     *
+     * [DevicePolicyManager.setGlobalSetting] allowlist includes `adb_enabled` and
+     * `stay_on_while_plugged_in` (AC | USB | wireless = 7). Also clears
+     * [UserManager.DISALLOW_DEBUGGING_FEATURES] and, on API 31+, keeps USB data
+     * signaling on so a PC can open an ADB session. Soft-fail; read-back is logged.
+     * Does not enable wireless debugging, and does not grant accessibility or overlay.
+     */
+    private fun applyPcControllerPrep(): String {
+        val cr = appContext.contentResolver
+        val notes = mutableListOf<String>()
+
+        runCatching {
+            dpm.clearUserRestriction(admin, UserManager.DISALLOW_DEBUGGING_FEATURES)
+            notes += "debugRestriction=cleared"
+        }.onFailure { Log.w(TAG, "clear DISALLOW_DEBUGGING_FEATURES failed", it) }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching {
+                dpm.setUsbDataSignalingEnabled(true)
+                notes += "usbData=on"
+            }.onFailure { Log.w(TAG, "setUsbDataSignalingEnabled(true) failed", it) }
+        }
+
+        val adbWrote = writeDeviceOwnerGlobal(Settings.Global.ADB_ENABLED, "1")
+        val adbRead = runCatching {
+            Settings.Global.getInt(cr, Settings.Global.ADB_ENABLED)
+        }.getOrNull()
+        notes += "adb=$adbRead write=$adbWrote"
+
+        val stayMask = (
+            BatteryManager.BATTERY_PLUGGED_AC or
+                BatteryManager.BATTERY_PLUGGED_USB or
+                BatteryManager.BATTERY_PLUGGED_WIRELESS
+            ).toString()
+        val stayWrote = writeDeviceOwnerGlobal(Settings.Global.STAY_ON_WHILE_PLUGGED_IN, stayMask)
+        val stayRead = runCatching {
+            Settings.Global.getInt(cr, Settings.Global.STAY_ON_WHILE_PLUGGED_IN)
+        }.getOrNull()
+        notes += "stayOn=$stayRead want=$stayMask write=$stayWrote"
+
+        val summary = notes.joinToString(" ")
+        Log.i(TAG, "PC controller prep: $summary")
+        return summary
+    }
+
+    /** Reflective DO [DevicePolicyManager.setGlobalSetting], then Settings.Global.putInt. */
+    private fun writeDeviceOwnerGlobal(key: String, value: String): Boolean {
+        var wrote = false
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setGlobalSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, key, value)
+            wrote = true
+            Log.i(TAG, "DPM.setGlobalSetting($key, $value)")
+        }.onFailure { Log.w(TAG, "DPM.setGlobalSetting($key) failed", it) }
+        val asInt = value.toIntOrNull()
+        if (asInt != null) {
+            runCatching {
+                if (Settings.Global.putInt(appContext.contentResolver, key, asInt)) {
+                    wrote = true
+                    Log.i(TAG, "Settings.Global.putInt($key, $asInt)")
+                }
+            }.onFailure { Log.w(TAG, "Settings.Global.putInt($key) failed", it) }
+        }
+        return wrote
+    }
+
+    /**
      * Return to personal use: final uninstall pass on non-keep, unhide **keep-list only**
      * (never restore force-removed / Yahoo / Google suite bloat), clear DO-only policies,
      * then [DevicePolicyManager.clearDeviceOwnerApp] (deprecated self-clear API).
@@ -528,6 +609,10 @@ class PolicyApplier(context: Context) {
                 message = "not_device_owner"
             )
         }
+
+        // Last moment we are still Device Owner: re-assert ADB + stay-awake so they
+        // survive clearDeviceOwnerApp (global settings are not cleared with DO).
+        applyPcControllerPrep()
 
         // Before losing DO: one more uninstall pass so hidden-only bloat is removed if possible.
         val finalUninst = finalUninstallPassBeforeClearOwner()
