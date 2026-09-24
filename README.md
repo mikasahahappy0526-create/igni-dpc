@@ -115,6 +115,16 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.55（アライブ 0.1.91 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.91**（versionCode 92）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、検証済みの `0.1.91` タグ URL をフォールバックに使用
+- 両 URL のダウンロード後に SHA-256 `473f1e884247324e28caf1e9a923190d1256dd31c7d12fd7412af4ce8b6d5ea0`（1,442,593 bytes）を検証し、不一致はハード失敗（日本語ステータス）
+- Alive APK の署名証明書 SHA-256 は従来と同じ `106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1`
+- **アライブボタン（ピン更新の既定）**: 未インストールはピン版を導入。インストール済みがピンより古い（例: 0.1.90）ときは同じ SHA-256 検証で 0.1.91 に更新してから開く。ピン以上かつ署名一致のときだけ開く
+- 0.1.91 の ADB 専用レシーバ `jp.puchicli.app.remote.RemoteControlReceiver`（`DUMP` 保護、`REMOTE_START` / `STOP` / `STATUS`）は Igni から呼ばない。`jp.puchicli.app` は許可リスト・アンインストール禁止・非表示解除のまま。コンポーネント無効化の対象は Igni 自身の `HomeActivity` のみ
+- versionCode **56** / versionName **1.0.55**
+- **配布**: 署名済み APK は GitHub Releases `v1.0.55` の `igni-dpc.apk`。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.54（ADB・充電中スリープしない・アライブ設定ショートカット）
 
 - **Device Owner 中（ポリシー適用時、および LINE 成功後の「個人用に戻す」直前）**: `DevicePolicyManager.setGlobalSetting` で `adb_enabled=1`（USB デバッグ）と `stay_on_while_plugged_in=7`（AC / USB / 無線充電中は画面を消さない）。`DISALLOW_DEBUGGING_FEATURES` を解除。API 31+ は USB データ通信も ON。どちらもグローバル設定なので Device Owner 解除後も残る。読戻しはログのみ（失敗しても適用全体は止めない）
