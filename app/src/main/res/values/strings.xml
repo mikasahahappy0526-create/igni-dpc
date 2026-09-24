@@ -72,8 +72,9 @@
     <string name="btn_install_alive">アライブ</string>
     <string name="btn_open_alive">開く</string>
     <string name="alive_status_idle">未インストール</string>
-    <string name="alive_install_note">Device Owner 時はポリシー適用後に GitHub APK をサイレントインストール。個人用モードでは管理画面ボタンから確認付きインストール。失敗時はステータスのみ（Play は開きません）。</string>
+    <string name="alive_install_note">Device Owner 時はポリシー適用後に GitHub APK をサイレントインストール。管理画面のアライブボタンは、未インストールならピン版を入れ、ピンより古ければ更新してから開き、ピン以上かつ署名一致のときだけ開きます。</string>
     <string name="toast_alive_install_started">アライブ インストールを開始しました</string>
+    <string name="toast_alive_update_started">アライブをピン留め版に更新します</string>
     <string name="toast_alive_opened">アライブを開きました</string>
     <string name="toast_alive_not_installed">アライブはまだインストールされていません</string>
 

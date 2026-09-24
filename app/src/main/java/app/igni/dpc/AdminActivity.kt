@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import app.igni.dpc.alive.AliveButtonAction
 import app.igni.dpc.alive.AliveInstaller
 import app.igni.dpc.chrome.ChromeInstaller
 import app.igni.dpc.databinding.ActivityAdminBinding
@@ -124,8 +125,10 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
         binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
-        binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
-        binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallAlive.text = AliveInstaller.primaryButtonLabel(this)
+        val aliveBusy = busy || updateBusy.get() || AliveInstaller.isBusy()
+        binding.btnInstallAlive.isEnabled = !aliveBusy
+        binding.btnOpenAlive.isEnabled = !aliveBusy && AliveInstaller.isAliveCurrent(this)
         updateGoogleLabel(applier.googleAppStatus())
         val chromeOk = ChromeInstaller.isChromeInstalled(this)
         binding.chromeBrowserStatus.text = getString(
@@ -349,33 +352,62 @@ class AdminActivity : AppCompatActivity() {
         binding.lineInstallStatus.text = LineInstaller.lastStatusText(this)
     }
 
+    /**
+     * 「アライブ」: missing → install pin; older than the pin → upgrade then open;
+     * current + matching cert → open only. 「開く」 uses the same rule so it cannot
+     * launch an outdated Alive.
+     */
     private fun installAlive() {
-        // Button-triggered only: GitHub APK install (silent when DO; confirm when personal).
-        // If already on pinned Alive (0.1.90+ matching signature), just open it.
-        if (AliveInstaller.isAliveCurrent(this)) {
-            binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
-            Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
-            AliveInstaller.openAlive(this)
-            return
-        }
-        binding.aliveInstallStatus.text = "アライブ インストール: 開始…"
-        Toast.makeText(this, R.string.toast_alive_install_started, Toast.LENGTH_SHORT).show()
-        executor.execute {
-            AliveInstaller.ensureAliveInstalled(this)
-            runOnUiThread {
+        when (AliveInstaller.primaryAction(this)) {
+            AliveButtonAction.OPEN -> {
                 binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+                if (AliveInstaller.openAlive(this)) {
+                    Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
+                }
+                refresh()
+            }
+            AliveButtonAction.NEED_UNINSTALL -> {
+                binding.btnInstallAlive.isEnabled = false
+                binding.btnOpenAlive.isEnabled = false
+                executor.execute {
+                    AliveInstaller.ensureAliveInstalled(this)
+                    runOnUiThread { refresh() }
+                }
+            }
+            AliveButtonAction.INSTALL, AliveButtonAction.UPDATE -> {
+                val updating = AliveInstaller.primaryAction(this) == AliveButtonAction.UPDATE
+                binding.aliveInstallStatus.text = if (updating) {
+                    "アライブ 更新: 開始…"
+                } else {
+                    "アライブ インストール: 開始…"
+                }
+                Toast.makeText(
+                    this,
+                    if (updating) R.string.toast_alive_update_started else R.string.toast_alive_install_started,
+                    Toast.LENGTH_SHORT
+                ).show()
+                binding.btnInstallAlive.isEnabled = false
+                binding.btnOpenAlive.isEnabled = false
+                executor.execute {
+                    AliveInstaller.ensureAliveInstalled(this, openWhenReady = true)
+                    runOnUiThread { refresh() }
+                }
             }
         }
     }
 
-    /** Optional: open Alive when already installed. */
+    /** Opens Alive only when it already meets the pin. Otherwise upgrades. */
     private fun openAlive() {
-        if (AliveInstaller.openAlive(this)) {
-            Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
-            binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+        if (AliveInstaller.isAliveCurrent(this)) {
+            if (AliveInstaller.openAlive(this)) {
+                Toast.makeText(this, R.string.toast_alive_opened, Toast.LENGTH_SHORT).show()
+                binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+            } else {
+                Toast.makeText(this, R.string.toast_alive_not_installed, Toast.LENGTH_SHORT).show()
+                binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+            }
         } else {
-            Toast.makeText(this, R.string.toast_alive_not_installed, Toast.LENGTH_SHORT).show()
-            binding.aliveInstallStatus.text = AliveInstaller.lastStatusText(this)
+            installAlive()
         }
     }
 
@@ -441,8 +473,9 @@ class AdminActivity : AppCompatActivity() {
         binding.btnUpdate.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLine.isEnabled = !busy && !updateBusy.get()
         binding.btnInstallLinePlay.isEnabled = !busy && !updateBusy.get()
-        binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get()
-        binding.btnOpenAlive.isEnabled = !busy && !updateBusy.get()
+        binding.btnInstallAlive.isEnabled = !busy && !updateBusy.get() && !AliveInstaller.isBusy()
+        binding.btnOpenAlive.isEnabled =
+            !busy && !updateBusy.get() && !AliveInstaller.isBusy() && AliveInstaller.isAliveCurrent(this)
     }
 
     companion object {
