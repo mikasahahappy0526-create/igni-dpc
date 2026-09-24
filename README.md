@@ -115,6 +115,16 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.53（アライブ 0.1.90 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.90**（versionCode 91）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、検証済みの `0.1.90` タグ URL をフォールバックに使用
+- 両 URL のダウンロード後に SHA-256 `601282c478c96de30b14596c10cb3277104d52fb45505566872a797252ef824a`（1,442,465 bytes）を検証し、不一致はハード失敗（日本語ステータス）
+- Alive APK の署名証明書 SHA-256 は従来と同じ `106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1`
+- **アライブボタン（以降のピン更新でも既定）**: 未インストールはピン版を導入。インストール済みが `TARGET_VERSION_CODE` / `TARGET_VERSION_NAME` より古いときは同じ SHA-256 検証で更新してから開く。ピン以上かつ署名一致のときだけ開く。古い Igni の「インストール済み」ステータスは残さない。ボタンは「入れる / 更新 / アライブ」、状態は「更新が必要（旧→ピン）」と「インストール済み（版）」を分ける
+- versionCode **54** / versionName **1.0.53**
+- **配布**: 署名済み APK は GitHub Releases `v1.0.53` の `igni-dpc.apk`、ミラー `i` リポジトリ release `1` の `d.apk`
+- **QR**: easy / povo / morley / 2B0F3002 / 3FC43002 の大きなタイトル付き簡易ラベル QR は `*-v153-simple-labeled.png`、ペイロードは対応する `*-v153-simple.json` として同梱
+
 ## v1.0.52（アライブ 0.1.89 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.89**（versionCode 90）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、検証済みの `0.1.89` タグ URL をフォールバックに使用
