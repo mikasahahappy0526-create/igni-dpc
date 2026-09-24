@@ -1,9 +1,12 @@
 package app.igni.dpc.alive
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import app.igni.dpc.AliveInstallStatusReceiver
 import app.igni.dpc.install.InstallSupport
@@ -72,7 +75,11 @@ object AliveInstaller {
     const val EXPECTED_CERT_SHA256 =
         "106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.53 (Android)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.54 (Android)"
+
+    /** Settings screen for one accessibility service. Java constant is @hide. */
+    private const val ACTION_ACCESSIBILITY_DETAILS_SETTINGS =
+        "android.settings.ACCESSIBILITY_DETAILS_SETTINGS"
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -278,6 +285,68 @@ object AliveInstaller {
     /** Raw prefs status key (downloading/installing/success/failure/…), or null. */
     fun lastRawStatus(context: Context): String? =
         prefs(context).getString(KEY_STATUS, null)
+
+    /**
+     * Open Alive's accessibility service page when one is declared, otherwise the
+     * accessibility list. Returns false when Alive is not installed.
+     * Does not enable the service — there is no public Device Owner API for that.
+     */
+    fun openAccessibilitySettings(context: Context): Boolean {
+        if (!isAliveInstalled(context)) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val component = accessibilityServiceComponent(context)
+            if (component != null) {
+                // Constant is @hide; the Settings activity action itself is stable since API 30.
+                // Fall back to the public accessibility list if this OEM omits the screen.
+                val details = Intent(ACTION_ACCESSIBILITY_DETAILS_SETTINGS).apply {
+                    putExtra(Intent.EXTRA_COMPONENT_NAME, component.flattenToString())
+                }
+                if (startSettings(context, details)) return true
+            }
+        }
+        return startSettings(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    /**
+     * Open the per-app "display over other apps" screen for Alive.
+     * Returns false when Alive is not installed. Does not grant the permission.
+     */
+    fun openOverlaySettings(context: Context): Boolean {
+        if (!isAliveInstalled(context)) return false
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:${KeepPackages.ALIVE_PACKAGE}")
+        )
+        return startSettings(context, intent)
+    }
+
+    private fun accessibilityServiceComponent(context: Context): ComponentName? {
+        val probe = Intent("android.accessibilityservice.AccessibilityService")
+            .setPackage(KeepPackages.ALIVE_PACKAGE)
+        val services = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.queryIntentServices(
+                probe,
+                PackageManager.ResolveInfoFlags.of(PackageManager.GET_META_DATA.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.queryIntentServices(probe, PackageManager.GET_META_DATA)
+        }
+        val info = services.firstOrNull()?.serviceInfo ?: return null
+        return ComponentName(info.packageName, info.name)
+    }
+
+    private fun startSettings(context: Context, intent: Intent): Boolean {
+        if (context !is android.app.Activity) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return runCatching {
+            context.startActivity(intent)
+            true
+        }.onFailure {
+            Log.w(TAG, "Failed to open settings ${intent.action}", it)
+        }.getOrDefault(false)
+    }
 
     /** Launch Alive if installed; returns true when a launcher Intent was started. */
     fun openAlive(context: Context): Boolean {

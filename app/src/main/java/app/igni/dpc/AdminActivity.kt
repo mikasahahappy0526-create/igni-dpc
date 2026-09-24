@@ -48,6 +48,8 @@ class AdminActivity : AppCompatActivity() {
         binding.btnInstallLinePlay.setOnClickListener { installLineViaPlay() }
         binding.btnInstallAlive.setOnClickListener { installAlive() }
         binding.btnOpenAlive.setOnClickListener { openAlive() }
+        binding.btnAliveAccessibility.setOnClickListener { openAliveAccessibility() }
+        binding.btnAliveOverlay.setOnClickListener { openAliveOverlay() }
 
         maybeReapplyAfterVersionChange()
 
@@ -393,6 +395,18 @@ class AdminActivity : AppCompatActivity() {
                     runOnUiThread { refresh() }
                 }
             }
+        }
+    }
+
+    private fun openAliveAccessibility() {
+        if (!AliveInstaller.openAccessibilitySettings(this)) {
+            Toast.makeText(this, R.string.toast_alive_not_installed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun openAliveOverlay() {
+        if (!AliveInstaller.openOverlaySettings(this)) {
+            Toast.makeText(this, R.string.toast_alive_not_installed, Toast.LENGTH_SHORT).show()
         }
     }
 

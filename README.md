@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.54（ADB・充電中スリープしない・アライブ設定ショートカット）
+
+- **Device Owner 中（ポリシー適用時、および LINE 成功後の「個人用に戻す」直前）**: `DevicePolicyManager.setGlobalSetting` で `adb_enabled=1`（USB デバッグ）と `stay_on_while_plugged_in=7`（AC / USB / 無線充電中は画面を消さない）。`DISALLOW_DEBUGGING_FEATURES` を解除。API 31+ は USB データ通信も ON。どちらもグローバル設定なので Device Owner 解除後も残る。読戻しはログのみ（失敗しても適用全体は止めない）
+- **管理画面**: 「ユーザー補助」「重ね表示」。アライブのユーザー補助サービス画面（無ければ一覧）と、アライブの「他のアプリの上に重ねて表示」を開く。未インストール時は短いトーストのみ。ユーザー補助とオーバーレイは公開 Device Owner API では付与できないため自動 ON にはしない
+- **制限付き設定（Android 13+）**: Device Owner の PackageInstaller に `INSTALL_REASON_POLICY` と API 33+ の `PACKAGE_SOURCE_OTHER` を付与。AOSP が制限付き設定にするのは `LOCAL_FILE` / `DOWNLOADED_FILE` のみ。ストア偽装（`PACKAGE_SOURCE_STORE`）はしない。OEM が独自に塞ぐ場合はアプリ情報の「制限付き設定を許可」が必要
+- アライブ 0.1.90 ピンと「古い版は更新、ピン以上かつ署名一致のときだけ開く」は維持
+- versionCode **55** / versionName **1.0.54**
+- **配布**: 署名済み APK は GitHub Releases `v1.0.54` の `igni-dpc.apk`。ミラー `i` の `d.apk` は別途差し替え
+
 ## v1.0.53（アライブ 0.1.90 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.90**（versionCode 91）を GitHub Releases の `alive.apk` に固定。`latest/download` を一次、検証済みの `0.1.90` タグ URL をフォールバックに使用
