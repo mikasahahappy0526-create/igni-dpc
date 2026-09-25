@@ -6,14 +6,18 @@ import android.app.ActivityManager
 import android.app.AlarmManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
+import android.content.ContentProviderClient
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.media.AudioManager
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Bundle
 import android.os.LocaleList
 import android.os.UserManager
 import android.provider.Settings
@@ -93,8 +97,11 @@ data class AudioStatus(
  *   turn ON status-bar battery percentage.
  * - Apply audio defaults: silent/manner ringer + all stream volumes to 0.
  * - Force system locale Japanese (ja_JP) + time zone Asia/Tokyo (best-effort; every apply).
- * - Best-effort OFF for OEM「充電情報を表示」(Show charging information) on lock screen
- *   (Samsung Galaxy A23 / Sense-series); never touches status-bar battery %.
+ * - Best-effort OFF for OEM「充電情報を表示」(Show charging information) on lock screen.
+ *   Generic keys plus confirmed OEM keys (Samsung `charging_info_always`,
+ *   Nubia/ZTE `charging_indicator`, OPPO `oplus_keyguard_charge_anim_show`,
+ *   Sharp `settings_ex` / `display_charging_when_screen_off`). Never touches
+ *   status-bar battery % or Samsung `aod_charging_mode`.
  * - Best-effort OFF for「緊急速報メール」/ cell-broadcast emergency alerts (settings keys +
  *   hide known CB packages; never SMS/phone).
  * - Best-effort portrait lock: auto-rotation OFF (ACCELEROMETER_ROTATION=0) and
@@ -1711,6 +1718,13 @@ class PolicyApplier(context: Context) {
      * reflective DPM setSystemSetting / setSecureSetting / setGlobalSetting,
      * and Samsung SemSettings.putInt when present. Never crashes apply().
      *
+     * Confirmed keys are attempted first, in their real namespace:
+     * Samsung System `charging_info_always` (not `aod_charging_mode`),
+     * Nubia/ZTE System `charging_indicator`, OPPO Secure
+     * `oplus_keyguard_charge_anim_show`, and Sharp `settings_ex`
+     * `display_charging_when_screen_off` via [trySharpSettingsExOff].
+     * FCG01 and A202SO have no known key and are left alone.
+     *
      * Does **not** touch `show_battery_percent` (status-bar battery %).
      *
      * @return short log summary of successful writes (or none).
@@ -1728,8 +1742,13 @@ class PolicyApplier(context: Context) {
                 manufacturer.contains("fcnt") || brand.contains("fcnt") ||
                 brand.contains("aquos")
 
-        // Prefer Samsung-documented / common OEM keys first.
+        // Confirmed real-device keys first, then older generic probes.
+        // Sharp `display_charging_when_screen_off` is settings_ex only — not listed here.
+        // `aod_charging_mode` is intentionally absent.
         val keys = linkedSetOf(
+            "charging_info_always",
+            "charging_indicator",
+            "oplus_keyguard_charge_anim_show",
             "show_charging_info",
             "sec_show_charging_info",
             "lock_screen_show_charging_info",
@@ -1840,7 +1859,24 @@ class PolicyApplier(context: Context) {
             }.getOrDefault(false)
         }
 
+        // Confirmed namespace writes, before the generic spray.
+        // Samsung One UI (SC-56C / SCG18). Do not write aod_charging_mode.
+        tryPutSystem("charging_info_always")
+        tryDpmSetting("setSystemSetting", "charging_info_always")
+        trySemSettings("charging_info_always")
+        // SoftBank Nubia/ZTE (Z6305R / A403ZT).
+        tryPutSystem("charging_indicator")
+        tryDpmSetting("setSystemSetting", "charging_indicator")
+        // OPPO (OPG06) keyguard charge animation.
+        tryPutSecure("oplus_keyguard_charge_anim_show")
+        tryDpmSetting("setSecureSetting", "oplus_keyguard_charge_anim_show")
+        val sharpEx = trySharpSettingsExOff()
+        if (sharpEx.isNotEmpty()) {
+            written += sharpEx
+        }
+
         for (key in keys) {
+            if (key == "aod_charging_mode") continue
             tryPutSystem(key)
             tryPutSecure(key)
             tryPutGlobal(key)
@@ -1854,7 +1890,11 @@ class PolicyApplier(context: Context) {
 
         // Extra SemSettings pass for preferred Samsung keys even if brand string odd.
         if (!isSamsung) {
-            for (key in listOf("show_charging_info", "sec_show_charging_info")) {
+            for (key in listOf(
+                "charging_info_always",
+                "show_charging_info",
+                "sec_show_charging_info",
+            )) {
                 trySemSettings(key)
             }
         }
@@ -1866,6 +1906,179 @@ class PolicyApplier(context: Context) {
         }
         Log.i(TAG, "Charging-info OFF apply: $summary")
         return summary
+    }
+
+    /**
+     * Sharp Aquos (SHG10 / SH-M24 / SH-53C / SH-54D) stores「充電情報を表示」in the
+     * OEM namespace `settings_ex`, key `display_charging_when_screen_off`, not in
+     * Settings.System / Secure / Global. There is no public DevicePolicyManager
+     * setter for that namespace.
+     *
+     * Attempted, all soft-fail, on every apply:
+     * 1. [ContentProviderClient.call] `PUT_ex` / `PUT_settings_ex` on authorities
+     *    `settings`, `jp.co.sharp.android.providers.settings`, and
+     *    `jp.co.sharp.android.providers.settings.ex` (AOSP NameValueCache shape:
+     *    arg = key, extras `value` = "0"), then `GET_*` read-back.
+     * 2. insert/update of a name/value row at `content://<authority>/{ex,settings_ex}`.
+     * 3. Reflective `putInt` / `putString` on `android.provider.SettingsEx`,
+     *    `android.provider.Settings$Ex`, and `jp.co.sharp.android.provider(s).settings.SettingsEx`
+     *    (`$System` included).
+     *
+     * A call that does not throw is logged, and counted only when read-back is "0"
+     * or insert/update/reflection reports success. Missing provider/class is skipped.
+     *
+     * @return short note for the apply log (empty when nothing was confirmed).
+     */
+    private fun trySharpSettingsExOff(): String {
+        val key = "display_charging_when_screen_off"
+        val value = "0"
+        val cr = appContext.contentResolver
+        val confirmed = mutableListOf<String>()
+        val attempts = mutableListOf<String>()
+        val authorities = listOf(
+            "settings",
+            "jp.co.sharp.android.providers.settings",
+            "jp.co.sharp.android.providers.settings.ex",
+        )
+        val callPairs = listOf(
+            "PUT_ex" to "GET_ex",
+            "PUT_settings_ex" to "GET_settings_ex",
+        )
+
+        fun client(authority: String): ContentProviderClient? {
+            return runCatching { cr.acquireUnstableContentProviderClient(authority) }
+                .getOrNull()
+        }
+
+        fun readCall(authority: String, method: String): String? {
+            val c = client(authority) ?: return null
+            return try {
+                c.call(method, key, null)?.getString(Settings.NameValueTable.VALUE)
+            } catch (_: Throwable) {
+                null
+            } finally {
+                c.close()
+            }
+        }
+
+        for (authority in authorities) {
+            for ((putMethod, getMethod) in callPairs) {
+                val c = client(authority)
+                if (c == null) {
+                    attempts += "$putMethod@$authority:no-provider"
+                    continue
+                }
+                val putOk = try {
+                    val extras = Bundle()
+                    extras.putString(Settings.NameValueTable.VALUE, value)
+                    c.call(putMethod, key, extras)
+                    true
+                } catch (t: Throwable) {
+                    attempts += "$putMethod@$authority:${t.javaClass.simpleName}"
+                    false
+                } finally {
+                    c.close()
+                }
+                if (!putOk) continue
+                val readBack = readCall(authority, getMethod)
+                if (readBack == value) {
+                    confirmed += "$putMethod@$authority readBack=0"
+                } else {
+                    attempts += "$putMethod@$authority:accepted readBack=$readBack"
+                }
+            }
+            for (path in listOf("ex", "settings_ex")) {
+                val uri = Uri.parse("content://$authority/$path")
+                val row = ContentValues().apply {
+                    put(Settings.NameValueTable.NAME, key)
+                    put(Settings.NameValueTable.VALUE, value)
+                }
+                val inserted = runCatching { cr.insert(uri, row) }.getOrNull()
+                if (inserted != null) {
+                    confirmed += "insert:$uri"
+                }
+                val updated = runCatching {
+                    cr.update(uri, row, "name=?", arrayOf(key))
+                }.getOrDefault(-1)
+                if (updated > 0) {
+                    confirmed += "update:$uri"
+                }
+                if (inserted == null && updated <= 0) {
+                    attempts += "row@$uri:miss"
+                }
+            }
+        }
+
+        val classes = listOf(
+            "android.provider.SettingsEx",
+            "android.provider.Settings\$Ex",
+            "jp.co.sharp.android.provider.SettingsEx",
+            "jp.co.sharp.android.provider.SettingsEx\$System",
+            "jp.co.sharp.android.providers.settings.SettingsEx",
+            "jp.co.sharp.android.providers.settings.SettingsEx\$System",
+            "jp.co.sharp.android.os.SettingsEx",
+        )
+        for (className in classes) {
+            val reflected = runCatching { reflectSharpSettingsExPut(className, key, 0) }
+                .getOrElse { t ->
+                    attempts += "$className:${t.javaClass.simpleName}"
+                    false
+                }
+            if (reflected) {
+                confirmed += "reflect:$className"
+            } else if (attempts.none { it.startsWith(className) }) {
+                attempts += "$className:miss"
+            }
+        }
+
+        val readBack = authorities.firstNotNullOfOrNull { authority ->
+            callPairs.firstNotNullOfOrNull { (_, getMethod) -> readCall(authority, getMethod) }
+        }
+        val summary = buildString {
+            append("settings_ex:$key")
+            append(" readBack=")
+            append(readBack ?: "unread")
+            if (confirmed.isNotEmpty()) {
+                append(" ok=")
+                append(confirmed.distinct().joinToString("|"))
+            }
+            if (attempts.isNotEmpty()) {
+                append(" fail=")
+                append(attempts.distinct().take(8).joinToString("|"))
+            }
+        }
+        Log.i(TAG, "Charging-info Sharp settings_ex: $summary")
+        return if (confirmed.isEmpty()) "" else summary
+    }
+
+    /** Reflective putInt/putString on a Sharp settings_ex helper. False if absent. */
+    private fun reflectSharpSettingsExPut(className: String, key: String, value: Int): Boolean {
+        val clazz = try {
+            Class.forName(className)
+        } catch (_: ClassNotFoundException) {
+            return false
+        }
+        val cr = appContext.contentResolver
+        val putInt = clazz.methods.firstOrNull { method ->
+            method.name == "putInt" &&
+                method.parameterTypes.size == 3 &&
+                android.content.ContentResolver::class.java.isAssignableFrom(method.parameterTypes[0]) &&
+                java.lang.reflect.Modifier.isStatic(method.modifiers)
+        }
+        if (putInt != null) {
+            val result = putInt.invoke(null, cr, key, value)
+            return result as? Boolean ?: true
+        }
+        val putString = clazz.methods.firstOrNull { method ->
+            method.name == "putString" &&
+                method.parameterTypes.size == 3 &&
+                java.lang.reflect.Modifier.isStatic(method.modifiers)
+        }
+        if (putString != null) {
+            val result = putString.invoke(null, cr, key, value.toString())
+            return result as? Boolean ?: true
+        }
+        return false
     }
 
     /**
