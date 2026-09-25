@@ -97,10 +97,10 @@ Lock Task（キオスク）は **デフォルトオフ** です。有効にす�
   - `Settings.System.show_battery_percent = 1` ほか Secure/Global／Samsung 系キーを試行
   - 反射 `DPM.setSystemSetting` / `setSecureSetting` / SemSettings。失敗はログのみ
   - ロック画面の「充電情報を表示」とは別（ステータスバー残量％）
-- **自動回転 OFF（v1.0.41）**:
-  - `Settings.System.putInt(..., ACCELEROMETER_ROTATION, 0)` のあと **読み戻してログ**
-  - 利用可能なら反射で `DevicePolicyManager.setSystemSetting(admin, ACCELEROMETER_ROTATION, "0")` も試す
-  - `USER_ROTATION` は変更しない（固定向きは端末側のまま）。失敗はログのみ
+- **縦固定（v1.0.56、自動回転 OFF は v1.0.41 から）**:
+  - `Settings.System.putInt(..., ACCELEROMETER_ROTATION, 0)` と `USER_ROTATION, 0`（縦）のあと **両方読み戻してログ**
+  - 利用可能なら反射で `DevicePolicyManager.setSystemSetting` も同じ 2 キーに書く
+  - `PolicyApplier.apply()` のたびに再適用。失敗はログのみ。設定の自動回転トグルは隠さない
 
 ## Samsung One UI ダークモード（v1.0.9）
 
@@ -114,6 +114,13 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 6. 管理画面: 適用後の `display_night_theme` 読み戻しが 1 かどうかを表示
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
+
+## v1.0.56（セットアップ時に縦固定）
+
+- **縦固定**: `PolicyApplier.apply()` のたびに `ACCELEROMETER_ROTATION=0`（自動回転 OFF、従来どおり）に加えて `USER_ROTATION=0`（縦）。どちらも `Settings.System.putInt` と、使えるとき反射 `DevicePolicyManager.setSystemSetting`。読み戻しはログのみ。設定アプリの自動回転トグルは隠さない
+- アライブ 0.1.91 ピン、USB デバッグ、充電中スリープしない、QR は変更なし
+- versionCode **57** / versionName **1.0.56**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
 
 ## v1.0.55（アライブ 0.1.91 固定配布）
 

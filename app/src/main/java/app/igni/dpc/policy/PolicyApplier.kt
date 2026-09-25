@@ -97,7 +97,8 @@ data class AudioStatus(
  *   (Samsung Galaxy A23 / Sense-series); never touches status-bar battery %.
  * - Best-effort OFF for「緊急速報メール」/ cell-broadcast emergency alerts (settings keys +
  *   hide known CB packages; never SMS/phone).
- * - Best-effort OFF for screen auto-rotation (自動回転 / ACCELEROMETER_ROTATION=0).
+ * - Best-effort portrait lock: auto-rotation OFF (ACCELEROMETER_ROTATION=0) and
+ *   USER_ROTATION=0, re-applied on every [apply].
  * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
  *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
  * - While still Device Owner (apply + just before that auto-release): USB debugging on
@@ -406,7 +407,7 @@ class PolicyApplier(context: Context) {
         // OEM / carrier「緊急速報メール」OFF (cell broadcast; best-effort every apply).
         val emergencyAlerts = applyEmergencyAlertsOff(hidden)
 
-        // Screen auto-rotation OFF (自動回転; best-effort every apply).
+        // Portrait lock: auto-rotation OFF and USER_ROTATION=0 (best-effort every apply).
         val autoRotate = applyAutoRotateOff()
 
         store.replace(hidden)
@@ -1222,16 +1223,17 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Turn OFF screen auto-rotation (自動回転).
+     * Lock the screen to portrait for new Device Owner setups.
      *
-     * Prefer [Settings.System.ACCELEROMETER_ROTATION] = 0 (put + read-back). Also try
-     * reflective [DevicePolicyManager.setSystemSetting] (DO SystemApi) when present.
-     * Does not force [Settings.System.USER_ROTATION] — leaves the current fixed orientation
-     * so the user can still rotate manually via the system UI when auto-rotate is off.
+     * Writes [Settings.System.ACCELEROMETER_ROTATION] = 0 (auto-rotate off) and
+     * [Settings.System.USER_ROTATION] = 0 (portrait) on every [apply]. Each key uses
+     * [Settings.System.putInt] plus reflective [DevicePolicyManager.setSystemSetting]
+     * when that SystemApi is present, then both values are read back into the log.
      *
-     * Soft-fail: OEM blocks are logged only; never crashes [apply].
+     * Soft-fail: OEM blocks are logged only; never crashes [apply]. Does not hide
+     * the system auto-rotate toggle.
      *
-     * @return short log summary (read-back value or note).
+     * @return short log summary (read-back values or note).
      */
     private fun applyAutoRotateOff(): String {
         val cr = appContext.contentResolver
@@ -1259,6 +1261,32 @@ class PolicyApplier(context: Context) {
             Log.i(TAG, "DPM.setSystemSetting(ACCELEROMETER_ROTATION, 0)")
         }.onFailure {
             Log.w(TAG, "DPM.setSystemSetting(ACCELEROMETER_ROTATION) unavailable/failed", it)
+        }
+
+        // Portrait. 0 is Surface.ROTATION_0. Re-applied every pass so a later
+        // manual rotation is put back on the next policy apply.
+        runCatching {
+            val ok = Settings.System.putInt(
+                cr,
+                Settings.System.USER_ROTATION,
+                0
+            )
+            if (ok) written += "System.putInt:USER_ROTATION=0"
+            Log.i(TAG, "USER_ROTATION put=$ok target=0")
+        }.onFailure { Log.w(TAG, "USER_ROTATION putInt failed", it) }
+
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSystemSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, Settings.System.USER_ROTATION, "0")
+            written += "DPM.setSystemSetting:USER_ROTATION=0"
+            Log.i(TAG, "DPM.setSystemSetting(USER_ROTATION, 0)")
+        }.onFailure {
+            Log.w(TAG, "DPM.setSystemSetting(USER_ROTATION) unavailable/failed", it)
         }
 
         // Some OEMs mirror the toggle under alternate keys; harmless if absent.
@@ -1293,7 +1321,7 @@ class PolicyApplier(context: Context) {
         } else {
             "ok readBack=$actual userRotation=$userRotation ${written.distinct().joinToString("; ")}"
         }
-        Log.i(TAG, "Auto-rotate OFF apply: $summary")
+        Log.i(TAG, "Portrait lock apply: $summary")
         return summary
     }
 
