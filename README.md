@@ -115,6 +115,18 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.57（充電情報を表示 OFF・実機キー）
+
+- **充電情報を表示 OFF** は `PolicyApplier.apply()` のたびに従来の汎用キーに加えて、実機で確認したキーを先に書く。無いキーは無視し、適用全体は止めない
+  - Samsung（SC-56C / SCG18 など）: `Settings.System` `charging_info_always=0`。`aod_charging_mode` は書かない
+  - SoftBank Nubia/ZTE（Z6305R / A403ZT）: `Settings.System` `charging_indicator=0`
+  - OPPO（OPG06）: `Settings.Secure` `oplus_keyguard_charge_anim_show=0`
+  - Sharp Aquos（SHG10 / SH-M24 / SH-53C / SH-54D）: 通常の settings ではなく **`settings_ex`** の `display_charging_when_screen_off=0`。公開の `DevicePolicyManager` にこの名前空間の setter は無い。`ContentProviderClient.call`（`PUT_ex` / `PUT_settings_ex`、authority `settings` と `jp.co.sharp.android.providers.settings` 系）、`content://…/ex` と `settings_ex` への insert/update、`SettingsEx` 系クラスの反射 `putInt`/`putString` を試し、読戻しが 0 か書き込み API が成功したときだけ成功扱い。プロバイダが無ければスキップ
+  - FCG01（FCNT）と A202SO（Sony）はキーが無いので追加しない
+- 縦固定、アライブ 0.1.91 ピン、USB デバッグ、充電中スリープしない、QR は変更なし
+- versionCode **58** / versionName **1.0.57**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.56（セットアップ時に縦固定）
 
 - **縦固定**: `PolicyApplier.apply()` のたびに `ACCELEROMETER_ROTATION=0`（自動回転 OFF、従来どおり）に加えて `USER_ROTATION=0`（縦）。どちらも `Settings.System.putInt` と、使えるとき反射 `DevicePolicyManager.setSystemSetting`。読み戻しはログのみ。設定アプリの自動回転トグルは隠さない
