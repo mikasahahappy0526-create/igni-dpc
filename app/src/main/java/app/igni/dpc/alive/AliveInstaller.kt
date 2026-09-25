@@ -1,5 +1,7 @@
 package app.igni.dpc.alive
 
+import android.app.PendingIntent
+import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -8,7 +10,9 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
+import app.igni.dpc.AdminReceiver
 import app.igni.dpc.AliveInstallStatusReceiver
+import app.igni.dpc.UninstallStatusReceiver
 import app.igni.dpc.install.InstallSupport
 import app.igni.dpc.policy.KeepPackages
 import app.igni.dpc.update.SemVer
@@ -35,14 +39,17 @@ enum class AliveButtonAction {
  * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
  * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
  *
- * v1.0.55: pins Alive **0.1.91** (versionCode 92) via GitHub latest/download,
- * verifies SHA-256 with a hard-fail on every source, and falls back to the version tag if latest fetch fails,
- * and surfaces clear Japanese status when an older / differently-signed install blocks update.
- * Does not silently uninstall. Does not call Alive's ADB-only RemoteControlReceiver.
+ * v1.0.58: pins Alive **0.1.92** (versionCode 93). Primary is the GitHub Pages APK;
+ * fallback is the 0.1.92 tag asset. Both hard-fail unless SHA-256 matches.
+ * Signing cert rotated; [EXPECTED_CERT_SHA256] is the new key only.
  *
  * Standing rule whenever [TARGET_VERSION_CODE] / [TARGET_VERSION_NAME] are bumped:
  * an already-installed Alive older than the pin is upgraded (same hash check), not merely opened.
  * Open-only is reserved for a matching signature at or above the pin.
+ *
+ * Signature mismatch: Device Owner clears the Alive uninstall block, silent-uninstalls,
+ * then installs the pin. Personal mode keeps 「入れ直す」 / need_uninstall.
+ * Does not call Alive's ADB-only RemoteControlReceiver.
  */
 object AliveInstaller {
 
@@ -52,30 +59,29 @@ object AliveInstaller {
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
 
-    /** Pinned Alive 0.1.91 primary (fixed-overwrite latest asset). */
+    /** Pinned Alive 0.1.92 primary (GitHub Pages distribution). */
     const val APK_URL =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/latest/download/alive.apk"
+        "https://mikasahahappy0526-create.github.io/puchicli/alive.apk"
 
     /** Version-tag fallback for the pinned Alive release. */
     const val APK_URL_FALLBACK =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.91/alive.apk"
+        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.92/alive.apk"
 
-    /** SHA-256 of the pinned 0.1.91 APK (hard-fail for both sources). */
+    /** SHA-256 of the pinned 0.1.92 APK (hard-fail for both sources). */
     const val APK_SHA256 =
-        "473f1e884247324e28caf1e9a923190d1256dd31c7d12fd7412af4ce8b6d5ea0"
+        "a7a80b9ffa9cde893853bc697c21e585b8e9b62452fa0df8782ec38154eb6894"
 
-    const val TARGET_VERSION_NAME = "0.1.91"
-    const val TARGET_VERSION_CODE = 92L
+    const val TARGET_VERSION_NAME = "0.1.92"
+    const val TARGET_VERSION_CODE = 93L
 
     /**
      * Signing-cert SHA-256 of the pinned Alive build (hex lowercase).
-     * Used to detect signature mismatch that requires uninstall before reinstall.
-     * Same publisher key as prior pins unless Alive rotates.
+     * Alive rotated keys at 0.1.92. The previous cert is not accepted.
      */
     const val EXPECTED_CERT_SHA256 =
-        "106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1"
+        "18faf84a7543ea4dbcfaeba1cd2f94a2d5410e8912b890a1fe39d37e86bea4b8"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.55 (Android)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.58 (Android)"
 
     /** Settings screen for one accessibility service. Java constant is @hide. */
     private const val ACTION_ACCESSIBILITY_DETAILS_SETTINGS =
@@ -105,7 +111,8 @@ object AliveInstaller {
      * Skips overlapping runs. Works in DO (silent) and personal mode (user confirm).
      *
      * If Alive is already at/above the pinned version with the expected signature, no-ops.
-     * If signature differs, surfaces [need_uninstall] — does **not** silently uninstall.
+     * If signature differs and this app is Device Owner, clears uninstall-blocked,
+     * silent-uninstalls, then installs the pin. Personal mode surfaces [need_uninstall].
      * If same signature but older ([needsAliveUpgrade]), downloads and attempts in-place update.
      *
      * @param openWhenReady when true (Admin button), open Alive after the pinned build is installed.
@@ -137,14 +144,17 @@ object AliveInstaller {
                     return
                 }
                 if (!installedSignatureMatches(app)) {
-                    Log.w(TAG, "Alive installed with different signature; uninstall required")
-                    openAfterInstall.set(false)
-                    persist(
-                        app,
-                        "need_uninstall",
-                        "アライブの署名が違います。一度アンインストールしてから入れ直してください"
-                    )
-                    return
+                    if (!replaceMismatchedAliveIfDeviceOwner(app)) {
+                        Log.w(TAG, "Alive installed with different signature; uninstall required")
+                        openAfterInstall.set(false)
+                        persist(
+                            app,
+                            "need_uninstall",
+                            "アライブの署名が違います。一度アンインストールしてから入れ直してください"
+                        )
+                        return
+                    }
+                    Log.i(TAG, "Removed signature-mismatched Alive; installing pin")
                 }
                 Log.i(TAG, "Alive installed but older (vc=$code name=$name < $TARGET_VERSION_NAME); updating")
             }
@@ -213,11 +223,13 @@ object AliveInstaller {
             }
             // Commit returns before PackageInstaller finishes. An older Alive is still
             // "installed" here, so success is only claimed once the pin is actually present.
+            if (isDo) setAliveUninstallBlocked(app, true)
             if (isAliveCurrent(app)) {
                 openAfterInstall.set(false)
                 persist(app, "success", "インストール確認済み（$TARGET_VERSION_NAME）")
                 if (openWhenReady) openAlive(app)
             } else if (openWhenReady && awaitAliveCurrent(app, if (isDo) 20_000L else 1_500L)) {
+                if (isDo) setAliveUninstallBlocked(app, true)
                 openAfterInstall.set(false)
                 persist(app, "success", "インストール確認済み（$TARGET_VERSION_NAME）")
                 openAlive(app)
@@ -454,6 +466,74 @@ object AliveInstaller {
         } else {
             "インストール済み（$name）"
         }
+    }
+
+    /**
+     * Device Owner only: clear Alive's uninstall block and silent-uninstall a
+     * different-signature install so the pin can be installed. Personal mode returns false.
+     */
+    private fun replaceMismatchedAliveIfDeviceOwner(context: Context): Boolean {
+        if (!InstallSupport.isDeviceOwner(context)) return false
+        persist(context, "installing", "署名が違うアライブを入れ替えています…")
+        setAliveUninstallBlocked(context, false)
+        val submitted = runCatching {
+            val statusIntent = Intent(UninstallStatusReceiver.ACTION).apply {
+                setPackage(context.packageName)
+                putExtra(UninstallStatusReceiver.EXTRA_PACKAGE, KeepPackages.ALIVE_PACKAGE)
+            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_MUTABLE
+                } else {
+                    0
+                }
+            val pending = PendingIntent.getBroadcast(
+                context,
+                KeepPackages.ALIVE_PACKAGE.hashCode(),
+                statusIntent,
+                flags
+            )
+            context.packageManager.packageInstaller.uninstall(
+                KeepPackages.ALIVE_PACKAGE,
+                pending.intentSender
+            )
+            true
+        }.onFailure {
+            Log.w(TAG, "Alive silent uninstall failed to submit", it)
+        }.getOrDefault(false)
+        if (!submitted) return false
+        val gone = awaitAliveGone(context, 20_000L)
+        if (!gone) {
+            Log.w(TAG, "Alive still installed after silent uninstall request")
+        }
+        return gone
+    }
+
+    /** Restore or clear Device Owner uninstall-block on Alive. No-op outside DO. */
+    private fun setAliveUninstallBlocked(context: Context, blocked: Boolean) {
+        if (!InstallSupport.isDeviceOwner(context)) return
+        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return
+        val admin = AdminReceiver.componentName(context)
+        runCatching {
+            dpm.setUninstallBlocked(admin, KeepPackages.ALIVE_PACKAGE, blocked)
+            Log.i(TAG, "Alive uninstallBlocked=$blocked")
+        }.onFailure {
+            Log.w(TAG, "setUninstallBlocked(Alive, $blocked) failed", it)
+        }
+    }
+
+    private fun awaitAliveGone(context: Context, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (!isAliveInstalled(context)) return true
+            try {
+                Thread.sleep(400)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return !isAliveInstalled(context)
+            }
+        }
+        return !isAliveInstalled(context)
     }
 
     /** Poll until the pinned Alive is the installed package, or [timeoutMs] elapses. */

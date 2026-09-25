@@ -115,6 +115,16 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.58（アライブ 0.1.92・署名鍵ローテーション）
+
+- **AliveInstaller**: 公開アライブ **0.1.92**（versionCode 93）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.92` の `alive.apk`。両 URL とも SHA-256 `a7a80b9ffa9cde893853bc697c21e585b8e9b62452fa0df8782ec38154eb6894` を検証し、不一致はハード失敗
+- 署名証明書 SHA-256 は新しい `18faf84a7543ea4dbcfaeba1cd2f94a2d5410e8912b890a1fe39d37e86bea4b8`。旧 `106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1` は不一致
+- **同じ署名で古い版**: これまでどおりピンへ更新し、ピン以上かつ署名一致のときだけ開く
+- **署名違い**: Device Owner は `setUninstallBlocked` を一時解除してサイレントアンインストールし、ピンを入れ直す。個人用モードは「入れ直す」／要アンインストールのまま
+- USB デバッグ、充電中スリープしない、縦固定、充電情報 OFF、QR は変更なし
+- versionCode **59** / versionName **1.0.58**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.57（充電情報を表示 OFF・実機キー）
 
 - **充電情報を表示 OFF** は `PolicyApplier.apply()` のたびに従来の汎用キーに加えて、実機で確認したキーを先に書く。無いキーは無視し、適用全体は止めない
