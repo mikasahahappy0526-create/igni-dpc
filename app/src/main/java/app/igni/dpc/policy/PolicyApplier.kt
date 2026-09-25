@@ -110,8 +110,9 @@ data class AudioStatus(
  *   TagViewer. Restrictions drop when Device Owner is cleared.
  * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
  *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
- * - While still Device Owner (apply + just before that auto-release): USB debugging on
- *   and stay awake while plugged in (AC/USB/wireless). Settings persist after DO clear.
+ * - While still Device Owner (apply + just before that auto-release): USB debugging on,
+ *   stay awake while plugged in (AC/USB/wireless = 7), and Samsung Auto Blocker
+ *   (rampart) off. Settings persist after DO clear.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -542,6 +543,11 @@ class PolicyApplier(context: Context) {
      * [UserManager.DISALLOW_DEBUGGING_FEATURES] and, on API 31+, keeps USB data
      * signaling on so a PC can open an ADB session. Soft-fail; read-back is logged.
      * Does not enable wireless debugging, and does not grant accessibility or overlay.
+     *
+     * Samsung One UI 8.5+ Auto Blocker (rampart) can turn USB debugging back off
+     * after about 30 minutes. Both switches are written to 0 on every apply:
+     * `rampart_main_switch_enabled` and `rampart_auto_enabled_switch_enabled`.
+     * Devices without those keys are skipped.
      */
     private fun applyPcControllerPrep(): String {
         val cr = appContext.contentResolver
@@ -565,6 +571,7 @@ class PolicyApplier(context: Context) {
         }.getOrNull()
         notes += "adb=$adbRead write=$adbWrote"
 
+        // 1 | 2 | 4 = 7: stay awake on AC, USB, and wireless. Do not narrow this mask.
         val stayMask = (
             BatteryManager.BATTERY_PLUGGED_AC or
                 BatteryManager.BATTERY_PLUGGED_USB or
@@ -575,6 +582,15 @@ class PolicyApplier(context: Context) {
             Settings.Global.getInt(cr, Settings.Global.STAY_ON_WHILE_PLUGGED_IN)
         }.getOrNull()
         notes += "stayOn=$stayRead want=$stayMask write=$stayWrote"
+
+        for (key in listOf(
+            "rampart_main_switch_enabled",
+            "rampart_auto_enabled_switch_enabled",
+        )) {
+            val wrote = writeDeviceOwnerSecure(key, "0")
+            val read = runCatching { Settings.Secure.getInt(cr, key) }.getOrNull()
+            notes += "$key=$read write=$wrote"
+        }
 
         val summary = notes.joinToString(" ")
         Log.i(TAG, "PC controller prep: $summary")

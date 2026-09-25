@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.61（Samsung 自動ブロッカー OFF）
+
+- **自動ブロッカー**: `PolicyApplier.apply()` のたびに（USB デバッグ・充電中スリープしないと同じ箇所、個人用に戻す直前も）`Settings.Secure` の `rampart_main_switch_enabled=0` と `rampart_auto_enabled_switch_enabled=0` を書く。反射 `DevicePolicyManager.setSecureSetting` と `Settings.Secure.putInt`。キーが無い端末は失敗扱いにせず適用を続ける。Galaxy A25 / One UI 8.5 以降で、自動ブロッカーが約 30 分後に USB デバッグを戻すのを防ぐ
+- **充電中スリープしない**は従来どおり `stay_on_while_plugged_in=7`（AC / USB / 無線）。値は変えていない
+- 手で確認・戻すとき: 設定 → セキュリティおよびプライバシー → 自動ブロッカー。本体スイッチと「自動的にON」の両方をオフ
+- アライブ 0.1.93、NFC、充電情報、縦固定、QR は変更なし
+- versionCode **62** / versionName **1.0.61**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.60（アライブ 0.1.93 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.93**（versionCode 94）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.93` の `alive.apk`。SHA-256 `bf5acaa93d8aecd86c0949e0ae13908ea79c0f8916d3346d5f8d9cead5d51867` と一致したソースだけを入れる。一致しないソースは次の URL を試し、どちらも不一致ならハード失敗
