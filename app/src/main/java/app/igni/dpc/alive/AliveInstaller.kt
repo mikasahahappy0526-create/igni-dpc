@@ -39,10 +39,10 @@ enum class AliveButtonAction {
  * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
  * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
  *
- * v1.0.60: pins Alive **0.1.93** (versionCode 94). Primary is the GitHub Pages APK;
- * fallback is the 0.1.93 tag asset. A source whose SHA-256 does not match the pin
+ * v1.0.62: pins Alive **0.1.94** (versionCode 95). Primary is the GitHub Pages APK;
+ * fallback is the 0.1.94 tag asset. A source whose SHA-256 does not match the pin
  * is not installed; the other source is tried, and every source failing the check
- * is a hard failure. Signing cert is unchanged from 0.1.92.
+ * is a hard failure. Signing cert is unchanged since 0.1.92.
  *
  * Standing rule whenever [TARGET_VERSION_CODE] / [TARGET_VERSION_NAME] are bumped:
  * an already-installed Alive older than the pin is upgraded (same hash check), not merely opened.
@@ -60,20 +60,20 @@ object AliveInstaller {
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
 
-    /** Pinned Alive 0.1.93 primary (GitHub Pages distribution). */
+    /** Pinned Alive 0.1.94 primary (GitHub Pages distribution). */
     const val APK_URL =
         "https://mikasahahappy0526-create.github.io/puchicli/alive.apk"
 
     /** Version-tag fallback for the pinned Alive release. */
     const val APK_URL_FALLBACK =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.93/alive.apk"
+        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.94/alive.apk"
 
-    /** SHA-256 of the pinned 0.1.93 APK (hard-fail unless a source matches). */
+    /** SHA-256 of the pinned 0.1.94 APK (hard-fail unless a source matches). */
     const val APK_SHA256 =
-        "bf5acaa93d8aecd86c0949e0ae13908ea79c0f8916d3346d5f8d9cead5d51867"
+        "631bf8b04bda58876d99af07e3eaf7b2cb8af07fb6ecd37261573177f6554b9f"
 
-    const val TARGET_VERSION_NAME = "0.1.93"
-    const val TARGET_VERSION_CODE = 94L
+    const val TARGET_VERSION_NAME = "0.1.94"
+    const val TARGET_VERSION_CODE = 95L
 
     /**
      * Signing-cert SHA-256 of the pinned Alive build (hex lowercase).
@@ -82,7 +82,7 @@ object AliveInstaller {
     const val EXPECTED_CERT_SHA256 =
         "18faf84a7543ea4dbcfaeba1cd2f94a2d5410e8912b890a1fe39d37e86bea4b8"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.60 (Android)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.62 (Android)"
 
     /** Settings screen for one accessibility service. Java constant is @hide. */
     private const val ACTION_ACCESSIBILITY_DETAILS_SETTINGS =
