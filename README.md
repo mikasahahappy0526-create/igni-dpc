@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.62（アライブ 0.1.94 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.94**（versionCode 95）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.94` の `alive.apk`。SHA-256 `631bf8b04bda58876d99af07e3eaf7b2cb8af07fb6ecd37261573177f6554b9f` と一致したソースだけを入れる。一致しないソースは次の URL を試し、どちらも不一致ならハード失敗
+- 署名証明書 SHA-256 は 0.1.92 から同じ `18faf84a7543ea4dbcfaeba1cd2f94a2d5410e8912b890a1fe39d37e86bea4b8`。旧 `106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1` は不一致のまま
+- **アライブボタン**: 同じ署名で古い版はピンへ更新。ピン以上かつ署名一致のときだけ開く。Device Owner の署名違いはアンインストール禁止を外してサイレント削除してから入れ直し、その後ブロックを戻す。個人用は「入れ直す」
+- NFC、充電情報、縦固定、USB デバッグ、充電中スリープしない、自動ブロッカー、QR は変更なし
+- versionCode **63** / versionName **1.0.62**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.61（Samsung 自動ブロッカー OFF）
 
 - **自動ブロッカー**: `PolicyApplier.apply()` のたびに（USB デバッグ・充電中スリープしないと同じ箇所、個人用に戻す直前も）`Settings.Secure` の `rampart_main_switch_enabled=0` と `rampart_auto_enabled_switch_enabled=0` を書く。反射 `DevicePolicyManager.setSecureSetting` と `Settings.Secure.putInt`。キーが無い端末は失敗扱いにせず適用を続ける。Galaxy A25 / One UI 8.5 以降で、自動ブロッカーが約 30 分後に USB デバッグを戻すのを防ぐ
