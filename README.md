@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.59（NFC オフ）
+
+- **NFC**: `PolicyApplier.apply()` のたびに `DISALLOW_NEAR_FIELD_COMMUNICATION_RADIO`（`no_near_field_communication_radio`）と `DISALLOW_OUTGOING_BEAM`（`no_outgoing_beam`）を付与。`Settings.Global` `nfc_on=0` は `setGlobalSetting` と `putInt` のベストエフォート。Device Owner 解除でユーザー制限は消える
+- **TagViewer**: 入っていれば `com.android.apps.tag`（および `com.google.android.tag` / `com.samsung.android.tag`）を非表示＋サスペンド。空の NFC タグで `TagViewer` が白画面になるのを防ぐ。`com.android.nfc` 本体は残す。未インストールはスキップ
+- **Quick Share / ニアバイシェア**: 公開 API に専用の無線オフは無い。`DISALLOW_BLUETOOTH_SHARING` と `nearby_sharing_enabled=0`、Samsung の `sharelive` パッケージ非表示のみ。GMS 本体は隠さない
+- アライブ 0.1.92、USB デバッグ、充電中スリープしない、縦固定、充電情報 OFF、QR は変更なし
+- versionCode **60** / versionName **1.0.59**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.58（アライブ 0.1.92・署名鍵ローテーション）
 
 - **AliveInstaller**: 公開アライブ **0.1.92**（versionCode 93）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.92` の `alive.apk`。両 URL とも SHA-256 `a7a80b9ffa9cde893853bc697c21e585b8e9b62452fa0df8782ec38154eb6894` を検証し、不一致はハード失敗
