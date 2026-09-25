@@ -106,6 +106,8 @@ data class AudioStatus(
  *   hide known CB packages; never SMS/phone).
  * - Best-effort portrait lock: auto-rotation OFF (ACCELEROMETER_ROTATION=0) and
  *   USER_ROTATION=0, re-applied on every [apply].
+ * - NFC off while Device Owner: user restrictions, `nfc_on=0`, and hide/suspend
+ *   TagViewer. Restrictions drop when Device Owner is cleared.
  * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
  *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
  * - While still Device Owner (apply + just before that auto-release): USB debugging on
@@ -417,6 +419,9 @@ class PolicyApplier(context: Context) {
         // Portrait lock: auto-rotation OFF and USER_ROTATION=0 (best-effort every apply).
         val autoRotate = applyAutoRotateOff()
 
+        // NFC radio off + TagViewer hidden (best-effort every apply; restrictions last while DO).
+        val nfc = applyNfcOff(hidden)
+
         store.replace(hidden)
         store.markApplied()
         Log.i(
@@ -430,7 +435,7 @@ class PolicyApplier(context: Context) {
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz " +
                 "chargingInfo=$chargingInfo emergencyAlerts=$emergencyAlerts " +
-                "autoRotate=$autoRotate navMode=$navMode batteryPct=$batteryPct " +
+                "autoRotate=$autoRotate nfc=$nfc navMode=$navMode batteryPct=$batteryPct " +
                 "controller=$controllerPrep"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
@@ -574,6 +579,110 @@ class PolicyApplier(context: Context) {
         val summary = notes.joinToString(" ")
         Log.i(TAG, "PC controller prep: $summary")
         return summary
+    }
+
+    /**
+     * Keep NFC off for the whole Device Owner session.
+     *
+     * [UserManager.DISALLOW_NEAR_FIELD_COMMUNICATION_RADIO] (`no_near_field_communication_radio`)
+     * and [UserManager.DISALLOW_OUTGOING_BEAM] are re-applied every [apply]. Android drops
+     * user restrictions when Device Owner is cleared. `nfc_on=0` is a best-effort global
+     * write. TagViewer (`com.android.apps.tag`) and a few tag-UI package ids are hidden
+     * and suspended when installed so an empty TECH_DISCOVERED tag cannot open a white screen.
+     * The NFC stack (`com.android.nfc`) is left in place so the radio restriction can be honored.
+     *
+     * Quick Share / Nearby Share has no separate public radio restriction. This also sets
+     * [UserManager.DISALLOW_BLUETOOTH_SHARING], writes `nearby_sharing_enabled=0`, and
+     * hides Samsung Quick Share packages when present. GMS itself is not hidden.
+     */
+    private fun applyNfcOff(hidden: MutableSet<String>): String {
+        val notes = mutableListOf<String>()
+        addUserRestrictionSoft(UserManager.DISALLOW_NEAR_FIELD_COMMUNICATION_RADIO, notes)
+        addUserRestrictionSoft(UserManager.DISALLOW_OUTGOING_BEAM, notes)
+
+        val nfcWrote = writeDeviceOwnerGlobal("nfc_on", "0")
+        val nfcRead = runCatching {
+            Settings.Global.getInt(appContext.contentResolver, "nfc_on")
+        }.getOrNull()
+        notes += "nfc_on=$nfcRead write=$nfcWrote"
+
+        for (pkg in NFC_TAG_UI_PACKAGES) {
+            suppressPackageSoft(pkg, hidden, notes)
+        }
+
+        addUserRestrictionSoft(UserManager.DISALLOW_BLUETOOTH_SHARING, notes)
+        val nearbyWrote = writeDeviceOwnerSecure("nearby_sharing_enabled", "0")
+        notes += "nearby_sharing write=$nearbyWrote"
+        for (pkg in QUICK_SHARE_PACKAGES) {
+            suppressPackageSoft(pkg, hidden, notes)
+        }
+
+        val summary = notes.joinToString(" ")
+        Log.i(TAG, "NFC off apply: $summary")
+        return summary
+    }
+
+    private fun addUserRestrictionSoft(restriction: String, notes: MutableList<String>) {
+        runCatching {
+            dpm.addUserRestriction(admin, restriction)
+            notes += "$restriction=set"
+            Log.i(TAG, "addUserRestriction $restriction")
+        }.onFailure {
+            notes += "$restriction=fail"
+            Log.w(TAG, "addUserRestriction $restriction failed", it)
+        }
+    }
+
+    /** Hide and suspend one package when it is installed. Missing packages are skipped. */
+    private fun suppressPackageSoft(
+        packageName: String,
+        hidden: MutableSet<String>,
+        notes: MutableList<String>
+    ) {
+        if (!isPackageInstalled(packageName)) {
+            notes += "$packageName=absent"
+            return
+        }
+        val hid = runCatching {
+            dpm.setApplicationHidden(admin, packageName, true)
+        }.onFailure {
+            Log.w(TAG, "setApplicationHidden($packageName) failed", it)
+        }.getOrDefault(false)
+        if (hid) hidden.add(packageName)
+        val suspendFailed = runCatching {
+            dpm.setPackagesSuspended(admin, arrayOf(packageName), true)
+        }.onFailure {
+            Log.w(TAG, "setPackagesSuspended($packageName) failed", it)
+        }.getOrNull()
+        val suspended = suspendFailed != null && packageName !in suspendFailed
+        notes += "$packageName hidden=$hid suspended=$suspended"
+        Log.i(TAG, "Suppressed $packageName hidden=$hid suspended=$suspended")
+    }
+
+    /** Reflective DO [DevicePolicyManager.setSecureSetting], then Settings.Secure.putInt. */
+    private fun writeDeviceOwnerSecure(key: String, value: String): Boolean {
+        var wrote = false
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSecureSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, key, value)
+            wrote = true
+            Log.i(TAG, "DPM.setSecureSetting($key, $value)")
+        }.onFailure { Log.w(TAG, "DPM.setSecureSetting($key) failed", it) }
+        val asInt = value.toIntOrNull()
+        if (asInt != null) {
+            runCatching {
+                if (Settings.Secure.putInt(appContext.contentResolver, key, asInt)) {
+                    wrote = true
+                    Log.i(TAG, "Settings.Secure.putInt($key, $asInt)")
+                }
+            }.onFailure { Log.w(TAG, "Settings.Secure.putInt($key) failed", it) }
+        }
+        return wrote
     }
 
     /** Reflective DO [DevicePolicyManager.setGlobalSetting], then Settings.Global.putInt. */
@@ -2544,6 +2653,19 @@ class PolicyApplier(context: Context) {
 
     companion object {
         private const val TAG = "IgniPolicy"
+
+        /** Tag UI that opens a white screen on empty TECH_DISCOVERED tags. Not the NFC stack. */
+        private val NFC_TAG_UI_PACKAGES = listOf(
+            "com.android.apps.tag",
+            "com.google.android.tag",
+            "com.samsung.android.tag",
+        )
+
+        /** Separate Quick Share APKs. Nearby Share inside GMS is not in this list. */
+        private val QUICK_SHARE_PACKAGES = listOf(
+            "com.samsung.android.app.sharelive",
+            "com.samsung.android.sharelive",
+        )
         /** Preferred finite screen-off timeout: 30 minutes (ms). */
         const val SCREEN_OFF_TIMEOUT_MS = 30 * 60 * 1000
         /** Fallback finite screen-off timeout: 10 minutes (ms). */
