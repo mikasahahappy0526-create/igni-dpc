@@ -39,9 +39,10 @@ enum class AliveButtonAction {
  * - Device Owner: silent PackageInstaller (auto from PolicyApplier + Admin button).
  * - Personal mode (Admin button): download then prompted PackageInstaller / ACTION_VIEW.
  *
- * v1.0.58: pins Alive **0.1.92** (versionCode 93). Primary is the GitHub Pages APK;
- * fallback is the 0.1.92 tag asset. Both hard-fail unless SHA-256 matches.
- * Signing cert rotated; [EXPECTED_CERT_SHA256] is the new key only.
+ * v1.0.60: pins Alive **0.1.93** (versionCode 94). Primary is the GitHub Pages APK;
+ * fallback is the 0.1.93 tag asset. A source whose SHA-256 does not match the pin
+ * is not installed; the other source is tried, and every source failing the check
+ * is a hard failure. Signing cert is unchanged from 0.1.92.
  *
  * Standing rule whenever [TARGET_VERSION_CODE] / [TARGET_VERSION_NAME] are bumped:
  * an already-installed Alive older than the pin is upgraded (same hash check), not merely opened.
@@ -59,29 +60,29 @@ object AliveInstaller {
     private const val KEY_DETAIL = "detail"
     private const val KEY_AT = "at_ms"
 
-    /** Pinned Alive 0.1.92 primary (GitHub Pages distribution). */
+    /** Pinned Alive 0.1.93 primary (GitHub Pages distribution). */
     const val APK_URL =
         "https://mikasahahappy0526-create.github.io/puchicli/alive.apk"
 
     /** Version-tag fallback for the pinned Alive release. */
     const val APK_URL_FALLBACK =
-        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.92/alive.apk"
+        "https://github.com/mikasahahappy0526-create/puchicli/releases/download/0.1.93/alive.apk"
 
-    /** SHA-256 of the pinned 0.1.92 APK (hard-fail for both sources). */
+    /** SHA-256 of the pinned 0.1.93 APK (hard-fail unless a source matches). */
     const val APK_SHA256 =
-        "a7a80b9ffa9cde893853bc697c21e585b8e9b62452fa0df8782ec38154eb6894"
+        "bf5acaa93d8aecd86c0949e0ae13908ea79c0f8916d3346d5f8d9cead5d51867"
 
-    const val TARGET_VERSION_NAME = "0.1.92"
-    const val TARGET_VERSION_CODE = 93L
+    const val TARGET_VERSION_NAME = "0.1.93"
+    const val TARGET_VERSION_CODE = 94L
 
     /**
      * Signing-cert SHA-256 of the pinned Alive build (hex lowercase).
-     * Alive rotated keys at 0.1.92. The previous cert is not accepted.
+     * Unchanged since the 0.1.92 rotation. The previous cert is not accepted.
      */
     const val EXPECTED_CERT_SHA256 =
         "18faf84a7543ea4dbcfaeba1cd2f94a2d5410e8912b890a1fe39d37e86bea4b8"
 
-    private const val USER_AGENT = "Igni-DPC-Alive/1.0.58 (Android)"
+    private const val USER_AGENT = "Igni-DPC-Alive/1.0.60 (Android)"
 
     /** Settings screen for one accessibility service. Java constant is @hide. */
     private const val ACTION_ACCESSIBILITY_DETAILS_SETTINGS =
@@ -626,8 +627,9 @@ object AliveInstaller {
     }
 
     /**
-     * Download latest first, then the version-tag fallback. Every successful download must match
-     * the pinned SHA-256; a mismatch is a hard failure and is never installed.
+     * Download Pages first, then the version-tag fallback. A file is installed only when
+     * its SHA-256 matches the pin. A mismatched source is skipped so the other URL can
+     * still match; if neither matches, the download hard-fails.
      */
     private fun downloadApk(dest: File): Result<File> {
         var lastError: Throwable? = null
@@ -645,9 +647,8 @@ object AliveInstaller {
             if (!hex.equals(APK_SHA256, ignoreCase = true)) {
                 Log.e(TAG, "Alive APK SHA-256 mismatch from $url: got=$hex expected=$APK_SHA256")
                 dest.delete()
-                return Result.failure(
-                    IllegalStateException("ハッシュ不一致（期待 $APK_SHA256 / 実際 $hex）")
-                )
+                lastError = IllegalStateException("ハッシュ不一致（期待 $APK_SHA256 / 実際 $hex）")
+                continue
             }
             Log.i(TAG, "Alive APK SHA-256 OK from $url (size=${dest.length()})")
             return downloaded

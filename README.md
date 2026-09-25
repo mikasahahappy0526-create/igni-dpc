@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.60（アライブ 0.1.93 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.93**（versionCode 94）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.93` の `alive.apk`。SHA-256 `bf5acaa93d8aecd86c0949e0ae13908ea79c0f8916d3346d5f8d9cead5d51867` と一致したソースだけを入れる。一致しないソースは次の URL を試し、どちらも不一致ならハード失敗
+- 署名証明書 SHA-256 は 0.1.92 と同じ `18faf84a7543ea4dbcfaeba1cd2f94a2d5410e8912b890a1fe39d37e86bea4b8`。旧 `106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1` は不一致のまま
+- **アライブボタン**: 同じ署名で古い版はピンへ更新。ピン以上かつ署名一致のときだけ開く。Device Owner の署名違いはアンインストール禁止を外してサイレント削除してから入れ直し、その後ブロックを戻す。個人用は「入れ直す」
+- NFC、充電情報、縦固定、USB デバッグ、充電中スリープしない、QR は変更なし
+- versionCode **61** / versionName **1.0.60**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.59（NFC オフ）
 
 - **NFC**: `PolicyApplier.apply()` のたびに `DISALLOW_NEAR_FIELD_COMMUNICATION_RADIO`（`no_near_field_communication_radio`）と `DISALLOW_OUTGOING_BEAM`（`no_outgoing_beam`）を付与。`Settings.Global` `nfc_on=0` は `setGlobalSetting` と `putInt` のベストエフォート。Device Owner 解除でユーザー制限は消える
