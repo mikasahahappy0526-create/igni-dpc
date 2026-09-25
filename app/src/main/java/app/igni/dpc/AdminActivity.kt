@@ -369,10 +369,12 @@ class AdminActivity : AppCompatActivity() {
                 refresh()
             }
             AliveButtonAction.NEED_UNINSTALL -> {
+                binding.aliveInstallStatus.text = "アライブ 入れ替え: 開始…"
                 binding.btnInstallAlive.isEnabled = false
                 binding.btnOpenAlive.isEnabled = false
                 executor.execute {
-                    AliveInstaller.ensureAliveInstalled(this)
+                    // Device Owner replaces a mismatched cert. Personal mode stays on 入れ直す.
+                    AliveInstaller.ensureAliveInstalled(this, openWhenReady = true)
                     runOnUiThread { refresh() }
                 }
             }
