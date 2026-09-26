@@ -108,6 +108,10 @@ data class AudioStatus(
  *   USER_ROTATION=0, re-applied on every [apply].
  * - NFC off while Device Owner: user restrictions, `nfc_on=0`, and hide/suspend
  *   TagViewer. Restrictions drop when Device Owner is cleared.
+ * - Pocket / anti-misoperation off on every [apply]: Samsung `screen_off_pocket`,
+ *   OPPO mistouch keys, Sony pocket-mode package + settings, plus best-effort
+ *   Sharp / Xiaomi / nubia keys. Never writes `proximity_sensor` or `surface_palm_*`.
+ *   Failures are logged and do not fail [apply].
  * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
  *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
  * - While still Device Owner (apply + just before that auto-release): USB debugging on,
@@ -425,6 +429,11 @@ class PolicyApplier(context: Context) {
         // NFC radio off + TagViewer hidden (best-effort every apply; restrictions last while DO).
         val nfc = applyNfcOff(hidden)
 
+        // Pocket / anti-misoperation off (best-effort every apply; never fails apply).
+        val pocket = runCatching { applyPocketModeOff() }
+            .onFailure { Log.w(TAG, "applyPocketModeOff failed", it) }
+            .getOrDefault("fail")
+
         store.replace(hidden)
         store.markApplied()
         Log.i(
@@ -438,8 +447,8 @@ class PolicyApplier(context: Context) {
                 "tiktokUninst=$tiktokRemoved forceUninst=$forceUninst " +
                 "chromeBrowser=$chromeBrowser localeTz=$localeTz " +
                 "chargingInfo=$chargingInfo emergencyAlerts=$emergencyAlerts " +
-                "autoRotate=$autoRotate nfc=$nfc navMode=$navMode batteryPct=$batteryPct " +
-                "controller=$controllerPrep"
+                "autoRotate=$autoRotate nfc=$nfc pocket=$pocket navMode=$navMode " +
+                "batteryPct=$batteryPct controller=$controllerPrep"
         )
         // Post-setup / stock home: LINE/Chrome/Alive missing → silent install (async). Never open Play.
         // TikTok Lite is force-removed (never install).
@@ -661,6 +670,117 @@ class PolicyApplier(context: Context) {
         return summary
     }
 
+    /**
+     * Turn off pocket detection and anti-misoperation while Device Owner.
+     *
+     * Confirmed keys are written on every [apply] (carrier brands often do not match
+     * [Build.MANUFACTURER]). Missing keys and denied writes are logged and skipped.
+     * Does not write `proximity_sensor` (in-call screen off) or `surface_palm_*`.
+     * Does not inject `input keycombination`.
+     */
+    private fun applyPocketModeOff(): String {
+        val cr = appContext.contentResolver
+        val notes = mutableListOf<String>()
+
+        fun noteSystem(key: String) {
+            val wrote = writeDeviceOwnerSystem(key, "0")
+            val read = runCatching { Settings.System.getInt(cr, key) }.getOrNull()
+            notes += "sys.$key=$read write=$wrote"
+        }
+
+        fun noteSecure(key: String) {
+            val wrote = writeDeviceOwnerSecure(key, "0")
+            val read = runCatching { Settings.Secure.getInt(cr, key) }.getOrNull()
+            notes += "sec.$key=$read write=$wrote"
+        }
+
+        fun noteGlobal(key: String) {
+            val wrote = writeDeviceOwnerGlobal(key, "0")
+            val read = runCatching { Settings.Global.getInt(cr, key) }.getOrNull()
+            notes += "g.$key=$read write=$wrote"
+        }
+
+        // Samsung. System only — do not write proximity_sensor or surface_palm_*.
+        noteSystem("screen_off_pocket")
+
+        // OPPO.
+        noteSecure("gesture_mistouch_prevention_enable")
+        noteSecure("gesture_mistouch_prevention_side_enable")
+        noteSystem("oplus_customize_prevent_misoperation_enabled")
+
+        // Sony settings, plus disable the pocket-mode package for user 0.
+        noteSystem("pocket_mode")
+        noteSecure("pocket_mode")
+        noteSecure("pocketmode2")
+        disableUserPackageSoft("com.sonymobile.pocketmode2", notes)
+
+        // Sharp / FCNT best-effort. System pocket_mode and screen_off_pocket already written.
+        noteGlobal("ambient_touch_to_wake")
+        noteSystem("misoperation_prevention")
+        noteSecure("misoperation_prevention")
+        noteSystem("anti_misoperation")
+        noteSecure("anti_misoperation")
+        noteSecure("screen_off_pocket")
+        sendSharpProximityBroadcast(notes)
+
+        // Xiaomi. Global writes are often denied.
+        noteGlobal("enable_screen_on_proximity_sensor")
+
+        // nubia. pocket_mode / screen_off_pocket system writes are above.
+        noteSystem("cover_interface")
+        noteSystem("nubia_screen_off_tp")
+
+        val summary = notes.joinToString(" ")
+        Log.i(TAG, "Pocket mode off: $summary")
+        return summary
+    }
+
+    /** `pm disable-user` equivalent. Missing packages are skipped. */
+    private fun disableUserPackageSoft(packageName: String, notes: MutableList<String>) {
+        if (!isPackageInstalled(packageName)) {
+            notes += "$packageName=absent"
+            return
+        }
+        runCatching {
+            appContext.packageManager.setApplicationEnabledSetting(
+                packageName,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+                0
+            )
+            val state = appContext.packageManager.getApplicationEnabledSetting(packageName)
+            val disabled = state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
+                state == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+            notes += if (disabled) "$packageName=disabled" else "$packageName=state=$state"
+            Log.i(TAG, "disable-user $packageName state=$state")
+        }.onFailure {
+            notes += "$packageName=fail"
+            Log.w(TAG, "disable-user $packageName failed", it)
+        }
+    }
+
+    /** Sharp/FCNT only. Other OEMs skip the broadcast. */
+    private fun sendSharpProximityBroadcast(notes: MutableList<String>) {
+        val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+        val brand = Build.BRAND.orEmpty().lowercase()
+        val sharp = manufacturer.contains("sharp") || brand.contains("sharp") ||
+            manufacturer.contains("fcnt") || brand.contains("fcnt") ||
+            brand.contains("aquos")
+        if (!sharp) {
+            notes += "sharpBroadcast=skip"
+            return
+        }
+        runCatching {
+            appContext.sendBroadcast(
+                Intent("jp.co.sharp.android.intent.action.PROXIMITY_SCREEN_ON")
+            )
+            notes += "sharpBroadcast=sent"
+            Log.i(TAG, "Sent Sharp PROXIMITY_SCREEN_ON")
+        }.onFailure {
+            notes += "sharpBroadcast=fail"
+            Log.w(TAG, "Sharp PROXIMITY_SCREEN_ON failed", it)
+        }
+    }
+
     /** Clear one user restriction. Never adds it. Missing or rejected keys are logged. */
     private fun clearUserRestrictionSoft(
         restriction: String,
@@ -714,6 +834,32 @@ class PolicyApplier(context: Context) {
         val suspended = suspendFailed != null && packageName !in suspendFailed
         notes += "$packageName hidden=$hid suspended=$suspended"
         Log.i(TAG, "Suppressed $packageName hidden=$hid suspended=$suspended")
+    }
+
+    /** Reflective DO [DevicePolicyManager.setSystemSetting], then Settings.System.putInt. */
+    private fun writeDeviceOwnerSystem(key: String, value: String): Boolean {
+        var wrote = false
+        runCatching {
+            val method = DevicePolicyManager::class.java.getMethod(
+                "setSystemSetting",
+                ComponentName::class.java,
+                String::class.java,
+                String::class.java
+            )
+            method.invoke(dpm, admin, key, value)
+            wrote = true
+            Log.i(TAG, "DPM.setSystemSetting($key, $value)")
+        }.onFailure { Log.w(TAG, "DPM.setSystemSetting($key) failed", it) }
+        val asInt = value.toIntOrNull()
+        if (asInt != null) {
+            runCatching {
+                if (Settings.System.putInt(appContext.contentResolver, key, asInt)) {
+                    wrote = true
+                    Log.i(TAG, "Settings.System.putInt($key, $asInt)")
+                }
+            }.onFailure { Log.w(TAG, "Settings.System.putInt($key) failed", it) }
+        }
+        return wrote
     }
 
     /** Reflective DO [DevicePolicyManager.setSecureSetting], then Settings.Secure.putInt. */
