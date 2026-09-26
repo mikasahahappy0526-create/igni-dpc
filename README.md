@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.66（アライブ 0.1.96 固定配布）
+
+- **AliveInstaller**: 公開アライブ **0.1.96**（versionCode 97）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.96` の `alive.apk`。SHA-256 `14bd30fce56ac16d87552e6d2f50908dfadc47dbbbbf75b9a49f732565ae12b1` と一致したソースだけを入れる。一致しないソースは次の URL を試し、どちらも不一致ならハード失敗
+- 署名証明書 SHA-256 は 0.1.92 から同じ `18faf84a7543ea4dbcfaeba1cd2f94a2d5410e8912b890a1fe39d37e86bea4b8`。旧 `106691866d324942d8ad8bbe5722b59c2aceb35b0532692008a59248467f92c1` は不一致のまま
+- **アライブボタン**: 同じ署名で古い版はピンへ更新。ピン以上かつ署名一致のときだけ開く。Device Owner の署名違いはアンインストール禁止を外してサイレント削除してから入れ直し、その後ブロックを戻す。個人用は「入れ直す」
+- USB データ転送の解除、NFC、充電情報、縦固定、USB デバッグ、充電中スリープしない、自動ブロッカー、QR、署名チェックサムは変更なし
+- versionCode **67** / versionName **1.0.66**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.65（USB データ転送を塞がない）
 
 - **PC 接続**: `applyPcControllerPrep()` のたびに `UserManager.DISALLOW_USB_FILE_TRANSFER` を解除する。残っていると OS が「充電のみ」になりファイル転送を塞ぐ。`DISALLOW_MOUNT_PHYSICAL_MEDIA` も解除のみ（追加しない）。失敗はログして適用は続ける。API 31+ は従来どおり `setUsbDataSignalingEnabled(true)` し、`isUsbDataSignalingEnabled()` を読み戻す
