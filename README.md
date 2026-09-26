@@ -115,6 +115,15 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.65（USB データ転送を塞がない）
+
+- **PC 接続**: `applyPcControllerPrep()` のたびに `UserManager.DISALLOW_USB_FILE_TRANSFER` を解除する。残っていると OS が「充電のみ」になりファイル転送を塞ぐ。`DISALLOW_MOUNT_PHYSICAL_MEDIA` も解除のみ（追加しない）。失敗はログして適用は続ける。API 31+ は従来どおり `setUsbDataSignalingEnabled(true)` し、`isUsbDataSignalingEnabled()` を読み戻す
+- 既存のまま: `DISALLOW_DEBUGGING_FEATURES` の解除、`adb_enabled=1`、`stay_on_while_plugged_in=7`、Samsung 自動ブロッカーの両スイッチ 0。適用のたび、および「個人用に戻す」直前
+- USB の既定モードを MTP にする非公開 OEM キーは書いていない。ワイヤレスデバッグは有効にしない。USB デバッグが完全に自動で ON になることは Android の制限で保証しない
+- アライブ 0.1.95 ピン、NFC、充電情報、縦固定、QR、署名チェックサムは変更なし
+- versionCode **66** / versionName **1.0.65**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.64（アライブ 0.1.95 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.95**（versionCode 96）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.95` の `alive.apk`。SHA-256 `5b341ddb54836ef758003f8ca99ae45933019fe96b9e878f9083d65a2e1da6d7` と一致したソースだけを入れる。一致しないソースは次の URL を試し、どちらも不一致ならハード失敗
