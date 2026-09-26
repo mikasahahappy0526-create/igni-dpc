@@ -111,8 +111,10 @@ data class AudioStatus(
  * - After a **real** LINE PackageInstaller success while Device Owner: auto「個人用に戻す」
  *   ([returnToPersonalUse]), waiting briefly for Alive when needed (one-shot).
  * - While still Device Owner (apply + just before that auto-release): USB debugging on,
- *   stay awake while plugged in (AC/USB/wireless = 7), and Samsung Auto Blocker
- *   (rampart) off. Settings persist after DO clear.
+ *   USB file transfer allowed (clear DISALLOW_USB_FILE_TRANSFER and the physical-media
+ *   mount block), USB data signaling on (API 31+), stay awake while plugged in
+ *   (AC/USB/wireless = 7), and Samsung Auto Blocker (rampart) off. Global settings
+ *   persist after DO clear; user restrictions do not.
  *
  * Lock-task is opt-in via [BuildConfig.ENABLE_LOCK_TASK] (default false).
  */
@@ -194,7 +196,7 @@ class PolicyApplier(context: Context) {
             )
         }
 
-        // Before LINE auto-release: ADB + stay-awake. Re-applied again in returnToPersonalUse.
+        // Before LINE auto-release: USB data, ADB, stay-awake. Re-applied again in returnToPersonalUse.
         val controllerPrep = applyPcControllerPrep()
 
         runCatching { dpm.setUninstallBlocked(admin, appContext.packageName, true) }
@@ -536,13 +538,21 @@ class PolicyApplier(context: Context) {
     }
 
     /**
-     * Device Owner window only: turn on USB debugging and stay awake while charging.
+     * Device Owner window only: allow USB data to a PC and keep debugging unblocked.
+     *
+     * Clears [UserManager.DISALLOW_DEBUGGING_FEATURES] and
+     * [UserManager.DISALLOW_USB_FILE_TRANSFER]. The file-transfer restriction forces
+     * charge-only and blocks USB storage. Also clears
+     * [UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA] (public since API 18; soft-fail).
+     * These restrictions are only cleared, never added.
+     *
+     * On API 31+, [DevicePolicyManager.setUsbDataSignalingEnabled] is set true every
+     * apply and [DevicePolicyManager.isUsbDataSignalingEnabled] is logged.
      *
      * [DevicePolicyManager.setGlobalSetting] allowlist includes `adb_enabled` and
-     * `stay_on_while_plugged_in` (AC | USB | wireless = 7). Also clears
-     * [UserManager.DISALLOW_DEBUGGING_FEATURES] and, on API 31+, keeps USB data
-     * signaling on so a PC can open an ADB session. Soft-fail; read-back is logged.
-     * Does not enable wireless debugging, and does not grant accessibility or overlay.
+     * `stay_on_while_plugged_in` (AC | USB | wireless = 7). Soft-fail; read-back is logged.
+     * Does not set a default USB function (MTP), enable wireless debugging, or grant
+     * accessibility or overlay. USB debugging fully turning on is still limited by Android.
      *
      * Samsung One UI 8.5+ Auto Blocker (rampart) can turn USB debugging back off
      * after about 30 minutes. Both switches are written to 0 on every apply:
@@ -558,11 +568,24 @@ class PolicyApplier(context: Context) {
             notes += "debugRestriction=cleared"
         }.onFailure { Log.w(TAG, "clear DISALLOW_DEBUGGING_FEATURES failed", it) }
 
+        // If set, the OS forces charge-only and blocks file transfer.
+        clearUserRestrictionSoft(
+            UserManager.DISALLOW_USB_FILE_TRANSFER,
+            "usbFileTransfer",
+            notes
+        )
+        clearUserRestrictionSoft(
+            UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA,
+            "mountPhysicalMedia",
+            notes
+        )
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             runCatching {
                 dpm.setUsbDataSignalingEnabled(true)
-                notes += "usbData=on"
             }.onFailure { Log.w(TAG, "setUsbDataSignalingEnabled(true) failed", it) }
+            val signaling = runCatching { dpm.isUsbDataSignalingEnabled() }.getOrNull()
+            notes += "usbData=$signaling"
         }
 
         val adbWrote = writeDeviceOwnerGlobal(Settings.Global.ADB_ENABLED, "1")
@@ -636,6 +659,24 @@ class PolicyApplier(context: Context) {
         val summary = notes.joinToString(" ")
         Log.i(TAG, "NFC off apply: $summary")
         return summary
+    }
+
+    /** Clear one user restriction. Never adds it. Missing or rejected keys are logged. */
+    private fun clearUserRestrictionSoft(
+        restriction: String,
+        noteKey: String,
+        notes: MutableList<String>
+    ) {
+        runCatching {
+            dpm.clearUserRestriction(admin, restriction)
+            val still = appContext.getSystemService(UserManager::class.java)
+                .hasUserRestriction(restriction)
+            notes += if (still) "$noteKey=still-set" else "$noteKey=cleared"
+            Log.i(TAG, "clearUserRestriction $restriction still=$still")
+        }.onFailure {
+            notes += "$noteKey=fail"
+            Log.w(TAG, "clearUserRestriction $restriction failed", it)
+        }
     }
 
     private fun addUserRestrictionSoft(restriction: String, notes: MutableList<String>) {
@@ -743,8 +784,8 @@ class PolicyApplier(context: Context) {
             )
         }
 
-        // Last moment we are still Device Owner: re-assert ADB + stay-awake so they
-        // survive clearDeviceOwnerApp (global settings are not cleared with DO).
+        // Last moment we are still Device Owner: re-assert USB data, ADB, and stay-awake.
+        // Global settings survive clearDeviceOwnerApp; user restrictions do not.
         applyPcControllerPrep()
 
         // Before losing DO: one more uninstall pass so hidden-only bloat is removed if possible.
