@@ -34,7 +34,7 @@
     <string name="home_admin_link">管理</string>
     <string name="home_launch_failed">起動できませんでした</string>
 
-    <string name="current_version">現在のバージョン: %1$s (%2$d)</string>
+    <string name="current_version">現在のバージョン: %1$s</string>
     <string name="btn_update">最新版に更新</string>
     <string name="update_status_idle">更新: 未確認</string>
     <string name="update_status_checking">更新: 確認中…</string>

@@ -115,6 +115,13 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.63（管理画面のバージョン表示）
+
+- 管理画面の「現在のバージョン」は versionName のみ（例: `現在のバージョン: 1.0.63`）。versionCode の括弧は出さない
+- アライブ 0.1.94 ピン、NFC、充電情報、縦固定、USB デバッグ、充電中スリープしない、自動ブロッカー、QR、署名チェックサムは変更なし
+- versionCode **64** / versionName **1.0.63**
+- **配布**: 署名済み APK はマージ後に GitHub Release `v1.0.63` の `igni-dpc.apk` として付ける。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.62（アライブ 0.1.94 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.94**（versionCode 95）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.94` の `alive.apk`。SHA-256 `631bf8b04bda58876d99af07e3eaf7b2cb8af07fb6ecd37261573177f6554b9f` と一致したソースだけを入れる。一致しないソースは次の URL を試し、どちらも不一致ならハード失敗

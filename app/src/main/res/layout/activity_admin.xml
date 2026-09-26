@@ -120,7 +120,7 @@
             android:layout_marginTop="12dp"
             android:textColor="@color/igni_text"
             android:textSize="14sp"
-            tools:text="現在のバージョン: 1.0.23 (24)" />
+            tools:text="現在のバージョン: 1.0.63" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnUpdate"

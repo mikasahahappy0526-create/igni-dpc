@@ -35,8 +35,7 @@ class AdminActivity : AppCompatActivity() {
         binding.allowlist.text = PolicyApplier(this).allowlistForDisplay().joinToString("\n")
         binding.currentVersion.text = getString(
             R.string.current_version,
-            BuildConfig.VERSION_NAME,
-            BuildConfig.VERSION_CODE
+            BuildConfig.VERSION_NAME
         )
         binding.updateStatus.text = getString(R.string.update_status_idle)
 
