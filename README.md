@@ -115,6 +115,18 @@ Galaxy A23 など One UI では標準の `UiModeManager` / `ui_night_mode` だ�
 
 v1.0.8 のマナーモード＋音量 0、更新ボタン、アンインストールは維持しています。
 
+## v1.0.67（ポケットモード / 誤操作防止 OFF）
+
+- **ポケット / 誤操作防止**: `PolicyApplier.apply()` のたびに `applyPocketModeOff()`。キーが無い、書き込みが拒否された、パッケージが無い、どれも適用全体は止めない
+- Samsung: System `screen_off_pocket=0`。`proximity_sensor` は書かない（通話中の画面オフに使う）。`surface_palm_*` も触らない
+- OPPO: Secure `gesture_mistouch_prevention_enable=0`、`gesture_mistouch_prevention_side_enable=0`、System `oplus_customize_prevent_misoperation_enabled=0`
+- Sony: `com.sonymobile.pocketmode2` を user 0 で無効化（`COMPONENT_ENABLED_STATE_DISABLED_USER`、`pm disable-user` 相当）。System / Secure `pocket_mode=0`、Secure `pocketmode2=0`
+- ベストエフォート: Sharp / FCNT は Global `ambient_touch_to_wake=0` と System/Secure の `pocket_mode` / `misoperation_prevention` / `anti_misoperation` / `screen_off_pocket`。Sharp 系だけ `jp.co.sharp.android.intent.action.PROXIMITY_SCREEN_ON` を送る。Xiaomi は Global `enable_screen_on_proximity_sensor=0`（拒否されがち）。nubia は System `cover_interface=0`、`nubia_screen_off_tp=0`
+- `input keycombination 24 26` は入れない（ADB 専用。Device Owner の適用では SecurityException になり得る）
+- アライブ 0.1.96 ピン、USB 準備、NFC、充電情報、縦固定、QR、署名チェックサムは変更なし
+- versionCode **68** / versionName **1.0.67**
+- **配布**: 署名済み APK は本 PR のビルド成果。ミラー `i` の `d.apk` は別途差し替え。QR 画像は再生成していない
+
 ## v1.0.66（アライブ 0.1.96 固定配布）
 
 - **AliveInstaller**: 公開アライブ **0.1.96**（versionCode 97）。一次は GitHub Pages `https://mikasahahappy0526-create.github.io/puchicli/alive.apk`、フォールバックはタグ `0.1.96` の `alive.apk`。SHA-256 `14bd30fce56ac16d87552e6d2f50908dfadc47dbbbbf75b9a49f732565ae12b1` と一致したソースだけを入れる。一致しないソースは次の URL を試し、どちらも不一致ならハード失敗
